@@ -1,0 +1,26 @@
+# Flutter/Dart
+.dart_tool/
+.packages
+build/
+.flutter-plugins
+.flutter-plugins-dependencies
+.metadata
+
+# IDE
+.idea/
+.vscode/
+*.iml
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Pub
+pubspec.lock
+.pub-cache/
+.pub/
+
+# Generated
+*.g.dart
+*.freezed.dart
+*.mocks.dart
