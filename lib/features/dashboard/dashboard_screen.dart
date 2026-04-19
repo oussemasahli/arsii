@@ -6,6 +6,7 @@ import '../../core/services/auth_service.dart';
 import '../../shared/widgets/abstract_background.dart';
 import '../../shared/widgets/dashboard_hero_card.dart';
 import '../../shared/widgets/dashboard_cards.dart';
+import '../../shared/widgets/gradient_button.dart';
 
 enum _DashboardTab { home, lessons, progress, exercises, aiTutor, settings }
 
@@ -101,13 +102,7 @@ class _DashboardScreenState extends State<DashboardScreen>
           body: 'Ask questions, get step-by-step explanations, and receive hints designed for your pace.',
         );
       case _DashboardTab.settings:
-        return _featurePlaceholder(
-          isD: isD,
-          icon: Icons.settings_rounded,
-          title: 'Settings',
-          subtitle: 'Control your learning experience',
-          body: 'Manage account preferences, notification behavior, and AI personalization settings.',
-        );
+        return _settingsView(isD: isD);
     }
   }
 
@@ -358,6 +353,49 @@ class _DashboardScreenState extends State<DashboardScreen>
             _MetaChip(icon: Icons.flash_on_rounded, label: 'AI-powered'),
             _MetaChip(icon: Icons.bar_chart_rounded, label: 'Data-informed'),
           ]),
+        ]),
+      ),
+      const SizedBox(height: 24),
+    ]),
+  );
+
+  Widget _settingsView({required bool isD}) => SingleChildScrollView(
+    padding: EdgeInsets.symmetric(horizontal: isD ? 28 : 16, vertical: 8),
+    child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+      const SizedBox(height: 8),
+      Container(
+        padding: EdgeInsets.all(isD ? 28 : 22),
+        decoration: BoxDecoration(
+          borderRadius: BorderRadius.circular(20),
+          color: AppColors.backgroundCard,
+          border: Border.all(color: AppColors.border),
+          boxShadow: [
+            BoxShadow(
+              color: Colors.black.withOpacity(0.25),
+              blurRadius: 18,
+              offset: const Offset(0, 6),
+            ),
+          ],
+        ),
+        child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+          Text('Account Settings', style: GoogleFonts.inter(
+            fontSize: isD ? 30 : 24,
+            fontWeight: FontWeight.w800,
+            color: AppColors.textPrimary,
+            letterSpacing: -0.7,
+          )),
+          const SizedBox(height: 8),
+          Text('Manage your session and app preferences.', style: GoogleFonts.inter(
+            fontSize: 14,
+            height: 1.6,
+            color: AppColors.textSecondary,
+          )),
+          const SizedBox(height: 26),
+          GradientButton(
+            label: 'Log Out',
+            icon: Icons.logout_rounded,
+            onPressed: () async => await _auth.signOut(),
+          ),
         ]),
       ),
       const SizedBox(height: 24),

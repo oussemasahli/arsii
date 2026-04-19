@@ -52,6 +52,8 @@ class EvaluationResult {
 class AiService {
   /// Generate quiz questions for the given subjects (5 per subject).
   Future<List<AiQuestion>> generateQuiz(List<String> subjectNames) async {
+    if (subjectNames.isEmpty) return const [];
+
     final subjectList = subjectNames.join(', ');
     final totalQ = subjectNames.length * 5;
 
@@ -70,6 +72,10 @@ For each question provide:
 
 Mix difficulty levels: 2 easy, 2 medium, 1 hard per subject.
 
+Important constraints:
+- Use ONLY these exact subject names: $subjectList
+- Every question subject must match one of these names exactly.
+
 Return ONLY a valid JSON array, no markdown, no code fences:
 [{"subject":"...","question":"...","options":["A","B","C","D"],"correctIndex":0,"explanation":"..."}]
 ''';
@@ -80,6 +86,8 @@ Return ONLY a valid JSON array, no markdown, no code fences:
         headers: {
           'Content-Type': 'application/json',
           'Authorization': 'Bearer ${ApiConfig.openRouterApiKey}',
+          'HTTP-Referer': 'https://arsii.local',
+          'X-Title': 'Arsii Evaluation Quiz',
         },
         body: jsonEncode({
           'model': ApiConfig.model,
@@ -96,20 +104,61 @@ Return ONLY a valid JSON array, no markdown, no code fences:
       }
 
       final data = jsonDecode(response.body);
-      final content = data['choices'][0]['message']['content'] as String;
-
-      // Parse the JSON from the response (strip any markdown fences)
-      String cleaned = content.trim();
-      if (cleaned.startsWith('```')) {
-        cleaned = cleaned.replaceAll(RegExp(r'^```\w*\n?'), '').replaceAll(RegExp(r'\n?```$'), '');
+      final content = data['choices']?[0]?['message']?['content'] as String?;
+      if (content == null || content.trim().isEmpty) {
+        throw const FormatException('OpenRouter returned an empty response.');
       }
 
-      final List<dynamic> parsed = jsonDecode(cleaned);
-      return parsed.map((q) => AiQuestion.fromJson(q as Map<String, dynamic>)).toList();
+      String cleaned = content.trim();
+      if (cleaned.startsWith('```')) {
+        cleaned = cleaned
+            .replaceAll(RegExp(r'^```\w*\n?'), '')
+            .replaceAll(RegExp(r'\n?```$'), '')
+            .trim();
+      }
+
+      // Some models prepend explanatory text; extract the first JSON array payload.
+      final jsonPayload = _extractFirstJsonArray(cleaned);
+      final List<dynamic> parsed = jsonDecode(jsonPayload);
+
+      final questions = parsed
+          .map((q) => AiQuestion.fromJson(q as Map<String, dynamic>))
+          .where((q) =>
+              q.question.trim().isNotEmpty &&
+              q.options.length == 4 &&
+              q.correctIndex >= 0 &&
+              q.correctIndex < 4 &&
+              subjectNames.contains(q.subject))
+          .toList();
+
+      if (questions.isEmpty) {
+        throw const FormatException('No valid subject-based questions were returned.');
+      }
+
+      return questions;
     } catch (e) {
-      // Fallback: return hardcoded questions if API fails
-      return _fallbackQuestions(subjectNames);
+      throw Exception('Failed to generate AI quiz: $e');
     }
+  }
+
+  String _extractFirstJsonArray(String input) {
+    final start = input.indexOf('[');
+    if (start == -1) {
+      throw const FormatException('Missing JSON array start.');
+    }
+
+    int depth = 0;
+    for (int i = start; i < input.length; i++) {
+      final ch = input[i];
+      if (ch == '[') depth++;
+      if (ch == ']') {
+        depth--;
+        if (depth == 0) {
+          return input.substring(start, i + 1);
+        }
+      }
+    }
+    throw const FormatException('Missing JSON array end.');
   }
 
   /// Evaluate the quiz results and determine student level.
@@ -167,52 +216,4 @@ Return ONLY a valid JSON array, no markdown, no code fences:
     );
   }
 
-  /// Fallback questions if the API fails.
-  List<AiQuestion> _fallbackQuestions(List<String> subjects) {
-    final List<AiQuestion> result = [];
-    final fallback = {
-      'Programming Basics': [
-        AiQuestion(subject: 'Programming Basics', question: 'What is a variable?', options: ['A loop construct', 'A named storage location in memory', 'A type of function', 'A compilation error'], correctIndex: 1, explanation: 'A variable is a named storage location that holds a value which can change during program execution.'),
-        AiQuestion(subject: 'Programming Basics', question: 'Which keyword is used to define a function in Python?', options: ['func', 'function', 'def', 'define'], correctIndex: 2, explanation: 'Python uses the "def" keyword to define functions, followed by the function name and parentheses.'),
-        AiQuestion(subject: 'Programming Basics', question: 'What does OOP stand for?', options: ['Object-Oriented Programming', 'Open Operating Protocol', 'Ordered Output Process', 'Optional Object Parameters'], correctIndex: 0, explanation: 'OOP stands for Object-Oriented Programming, a paradigm based on objects containing data and methods.'),
-        AiQuestion(subject: 'Programming Basics', question: 'What is the output of: print(type(42))?', options: ['<class \'str\'>', '<class \'int\'>', '<class \'float\'>', 'Error'], correctIndex: 1, explanation: '42 is an integer literal in Python, so type(42) returns <class \'int\'>.'),
-        AiQuestion(subject: 'Programming Basics', question: 'Which loop runs at least once?', options: ['for loop', 'while loop', 'do-while loop', 'foreach loop'], correctIndex: 2, explanation: 'A do-while loop checks the condition after executing the body, guaranteeing at least one execution.'),
-      ],
-      'Algorithms': [
-        AiQuestion(subject: 'Algorithms', question: 'What is the time complexity of binary search?', options: ['O(n)', 'O(log n)', 'O(n²)', 'O(1)'], correctIndex: 1, explanation: 'Binary search halves the search space each step, giving O(log n) time complexity.'),
-        AiQuestion(subject: 'Algorithms', question: 'Which sorting algorithm has O(n log n) average case?', options: ['Bubble Sort', 'Selection Sort', 'Merge Sort', 'Insertion Sort'], correctIndex: 2, explanation: 'Merge Sort divides the array in half recursively and merges in linear time, giving O(n log n).'),
-        AiQuestion(subject: 'Algorithms', question: 'What is recursion?', options: ['A loop that runs forever', 'A function that calls itself', 'A type of data structure', 'An optimization technique'], correctIndex: 1, explanation: 'Recursion is when a function calls itself with a smaller input, moving toward a base case.'),
-        AiQuestion(subject: 'Algorithms', question: 'What does Big-O notation measure?', options: ['Exact runtime', 'Memory usage only', 'Upper bound of growth rate', 'Code quality'], correctIndex: 2, explanation: 'Big-O describes the upper bound of an algorithm\'s growth rate as input size increases.'),
-        AiQuestion(subject: 'Algorithms', question: 'Which technique does quicksort use?', options: ['Dynamic programming', 'Divide and conquer', 'Greedy approach', 'Backtracking'], correctIndex: 1, explanation: 'Quicksort uses divide and conquer by partitioning around a pivot element.'),
-      ],
-      'Data Structures': [
-        AiQuestion(subject: 'Data Structures', question: 'Which data structure uses FIFO ordering?', options: ['Stack', 'Queue', 'Tree', 'Graph'], correctIndex: 1, explanation: 'A Queue follows First-In-First-Out: the first element added is the first removed.'),
-        AiQuestion(subject: 'Data Structures', question: 'What is the time complexity of accessing an array element by index?', options: ['O(n)', 'O(log n)', 'O(n²)', 'O(1)'], correctIndex: 3, explanation: 'Arrays provide O(1) direct access because elements are stored in contiguous memory.'),
-        AiQuestion(subject: 'Data Structures', question: 'Which structure uses LIFO?', options: ['Queue', 'Stack', 'Linked List', 'Hash Table'], correctIndex: 1, explanation: 'A Stack follows Last-In-First-Out: the most recently added element is removed first.'),
-        AiQuestion(subject: 'Data Structures', question: 'What is a binary tree?', options: ['A tree with max 2 children per node', 'A tree with exactly 2 nodes', 'A sorted array', 'A type of graph'], correctIndex: 0, explanation: 'A binary tree is a tree where each node has at most two children (left and right).'),
-        AiQuestion(subject: 'Data Structures', question: 'What is the purpose of a hash table?', options: ['Sorting data', 'Fast key-value lookup', 'Hierarchical storage', 'Sequential access'], correctIndex: 1, explanation: 'Hash tables provide O(1) average-case lookups by mapping keys to array indices via a hash function.'),
-      ],
-      'Databases': [
-        AiQuestion(subject: 'Databases', question: 'What does SQL stand for?', options: ['Structured Query Language', 'Simple Query Logic', 'Standard Question Language', 'Sequential Query Lookup'], correctIndex: 0, explanation: 'SQL stands for Structured Query Language, used to manage relational databases.'),
-        AiQuestion(subject: 'Databases', question: 'Which SQL command retrieves data?', options: ['INSERT', 'UPDATE', 'SELECT', 'DELETE'], correctIndex: 2, explanation: 'SELECT is used to query and retrieve data from database tables.'),
-        AiQuestion(subject: 'Databases', question: 'What is a primary key?', options: ['Any column', 'A unique identifier for each row', 'A foreign reference', 'An index type'], correctIndex: 1, explanation: 'A primary key uniquely identifies each record in a table and cannot contain NULL values.'),
-        AiQuestion(subject: 'Databases', question: 'What is normalization?', options: ['Making data bigger', 'Organizing data to reduce redundancy', 'Encrypting data', 'Backing up data'], correctIndex: 1, explanation: 'Normalization organizes database tables to minimize redundancy and dependency issues.'),
-        AiQuestion(subject: 'Databases', question: 'Which JOIN returns only matching rows from both tables?', options: ['LEFT JOIN', 'RIGHT JOIN', 'INNER JOIN', 'FULL JOIN'], correctIndex: 2, explanation: 'INNER JOIN returns only rows where the join condition is met in both tables.'),
-      ],
-      'Web Basics': [
-        AiQuestion(subject: 'Web Basics', question: 'What does HTML stand for?', options: ['Hyper Text Markup Language', 'High Tech Modern Language', 'Hyper Transfer Markup Logic', 'Home Tool Markup Language'], correctIndex: 0, explanation: 'HTML stands for HyperText Markup Language, the standard language for creating web pages.'),
-        AiQuestion(subject: 'Web Basics', question: 'Which CSS property changes text color?', options: ['font-color', 'text-color', 'color', 'foreground'], correctIndex: 2, explanation: 'The CSS "color" property sets the text color of an element.'),
-        AiQuestion(subject: 'Web Basics', question: 'What is the purpose of JavaScript?', options: ['Styling pages', 'Structuring content', 'Adding interactivity', 'Serving files'], correctIndex: 2, explanation: 'JavaScript adds interactivity and dynamic behavior to web pages.'),
-        AiQuestion(subject: 'Web Basics', question: 'What HTTP method is used to submit form data?', options: ['GET', 'POST', 'PUT', 'HEAD'], correctIndex: 1, explanation: 'POST sends data to the server in the request body, commonly used for form submissions.'),
-        AiQuestion(subject: 'Web Basics', question: 'What does responsive design mean?', options: ['Fast loading', 'Adapts to different screen sizes', 'Uses animations', 'Server-side rendering'], correctIndex: 1, explanation: 'Responsive design means the layout adapts to different screen sizes and devices.'),
-      ],
-    };
-
-    for (final s in subjects) {
-      if (fallback.containsKey(s)) {
-        result.addAll(fallback[s]!);
-      }
-    }
-    return result;
-  }
 }
