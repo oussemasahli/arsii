@@ -24,3 +24,7 @@ pubspec.lock
 *.g.dart
 *.freezed.dart
 *.mocks.dart
+
+# Secrets
+.env
+assets/env/app.env
