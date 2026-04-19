@@ -370,17 +370,17 @@ class _DashboardScreenState extends State<DashboardScreen>
     padding: EdgeInsets.symmetric(horizontal: isD ? 28 : 16, vertical: 16),
     child: Row(children: [
       Container(
-        padding: const EdgeInsets.all(8),
+        padding: const EdgeInsets.all(6),
         decoration: BoxDecoration(
           borderRadius: BorderRadius.circular(10),
           border: Border.all(color: AppColors.primary.withOpacity(0.3)),
           color: AppColors.primarySurface,
         ),
-        child: const Icon(Icons.psychology_rounded, color: AppColors.primary, size: 22),
+        child: Image.asset('assets/images/logo2.png', width: 48, height: 48),
       ),
       const SizedBox(width: 12),
       Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-        Text('Informatics AI Tutor', style: GoogleFonts.inter(fontSize: 16, fontWeight: FontWeight.w700, color: AppColors.textPrimary)),
+        Text('LOCK-IN', style: GoogleFonts.inter(fontSize: 18, fontWeight: FontWeight.w800, color: AppColors.textPrimary, letterSpacing: 1.5)),
         Text(_tabLabel(), style: GoogleFonts.inter(fontSize: 12, fontWeight: FontWeight.w500, color: AppColors.textMuted)),
       ]),
       const Spacer(),
@@ -907,12 +907,6 @@ class _Sidebar extends StatelessWidget {
         child: Padding(
           padding: const EdgeInsets.symmetric(vertical: 14, horizontal: 10),
           child: Column(children: [
-            Container(width: 44, height: 44, decoration: BoxDecoration(
-              borderRadius: BorderRadius.circular(14),
-              gradient: LinearGradient(colors: [AppColors.primary.withOpacity(0.24), AppColors.secondary.withOpacity(0.18)]),
-              border: Border.all(color: AppColors.primary.withOpacity(0.28))),
-              child: const Icon(Icons.psychology_alt_rounded, color: AppColors.primary, size: 22)),
-            const SizedBox(height: 18),
             _NavItem(icon: Icons.home_rounded, label: 'Home', active: activeTab == _Tab.home, expanded: expanded, onTap: () => onTab(_Tab.home)),
             _NavItem(icon: Icons.menu_book_rounded, label: 'Lessons', active: activeTab == _Tab.lessons, expanded: expanded, onTap: () => onTab(_Tab.lessons)),
             _NavItem(icon: Icons.leaderboard_rounded, label: 'Progress', active: activeTab == _Tab.progress, expanded: expanded, onTap: () => onTab(_Tab.progress)),
@@ -937,33 +931,48 @@ class _NavItemState extends State<_NavItem> {
   @override
   Widget build(BuildContext context) {
     final a = widget.active;
+    final hoverOrActive = a || _hov;
     return MouseRegion(
       onEnter: (_) => setState(() => _hov = true),
       onExit: (_) => setState(() => _hov = false),
       cursor: SystemMouseCursors.click,
       child: GestureDetector(
         onTap: widget.onTap, behavior: HitTestBehavior.opaque,
-        child: AnimatedContainer(
-          duration: const Duration(milliseconds: 220), curve: Curves.easeOut,
-          margin: const EdgeInsets.only(bottom: 12),
-          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
-          decoration: BoxDecoration(
-            borderRadius: BorderRadius.circular(12),
-            color: (a || _hov) ? (a ? AppColors.primarySurface.withOpacity(0.95) : AppColors.backgroundSubtle.withOpacity(0.6)) : Colors.transparent,
-            border: Border.all(color: a ? AppColors.primary.withOpacity(0.35) : Colors.transparent),
-            boxShadow: a ? [BoxShadow(color: AppColors.primary.withOpacity(0.22), blurRadius: 16, offset: const Offset(0, 4))] : null,
+        child: AnimatedScale(
+          scale: _hov && !a ? 1.08 : 1.0,
+          duration: const Duration(milliseconds: 200),
+          curve: Curves.easeOutCubic,
+          child: AnimatedContainer(
+            duration: const Duration(milliseconds: 220), curve: Curves.easeOut,
+            margin: const EdgeInsets.only(bottom: 12),
+            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+            decoration: BoxDecoration(
+              borderRadius: BorderRadius.circular(12),
+              color: hoverOrActive
+                ? (a ? AppColors.primarySurface.withOpacity(0.95) : AppColors.backgroundSubtle.withOpacity(0.6))
+                : Colors.transparent,
+              border: Border.all(color: a ? AppColors.primary.withOpacity(0.35) : (_hov ? AppColors.primary.withOpacity(0.2) : Colors.transparent)),
+              boxShadow: a
+                ? [BoxShadow(color: AppColors.primary.withOpacity(0.22), blurRadius: 16, offset: const Offset(0, 4))]
+                : (_hov ? [BoxShadow(color: AppColors.primary.withOpacity(0.12), blurRadius: 12, offset: const Offset(0, 2))] : null),
+            ),
+            child: Row(children: [
+              AnimatedContainer(
+                duration: const Duration(milliseconds: 200),
+                child: Icon(widget.icon, size: 28,
+                  color: hoverOrActive ? AppColors.primary : AppColors.textMuted),
+              ),
+              ClipRect(child: AnimatedSize(
+                duration: const Duration(milliseconds: 260), curve: Curves.easeOutCubic,
+                child: SizedBox(width: widget.expanded ? 132 : 0,
+                  child: AnimatedOpacity(duration: const Duration(milliseconds: 180), opacity: widget.expanded ? 1 : 0,
+                    child: Padding(padding: const EdgeInsets.only(left: 18),
+                      child: Text(widget.label, overflow: TextOverflow.fade, softWrap: false,
+                        style: GoogleFonts.inter(fontSize: 20, fontWeight: a ? FontWeight.w600 : FontWeight.w500,
+                          color: hoverOrActive ? AppColors.textPrimary : AppColors.textSecondary))))),
+              )),
+            ]),
           ),
-          child: Row(children: [
-            Icon(widget.icon, size: 18, color: a ? AppColors.textPrimary : AppColors.textMuted),
-            ClipRect(child: AnimatedSize(
-              duration: const Duration(milliseconds: 260), curve: Curves.easeOutCubic,
-              child: SizedBox(width: widget.expanded ? 132 : 0,
-                child: AnimatedOpacity(duration: const Duration(milliseconds: 180), opacity: widget.expanded ? 1 : 0,
-                  child: Padding(padding: const EdgeInsets.only(left: 18),
-                    child: Text(widget.label, overflow: TextOverflow.fade, softWrap: false,
-                      style: GoogleFonts.inter(fontSize: 20, fontWeight: a ? FontWeight.w600 : FontWeight.w500, color: a ? AppColors.textPrimary : AppColors.textSecondary))))),
-            )),
-          ]),
         ),
       ),
     );

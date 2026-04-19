@@ -115,12 +115,12 @@ class _SignUpScreenState extends State<SignUpScreen>
           border: Border.all(color: AppColors.primary.withOpacity(0.3)),
           color: AppColors.primarySurface,
         ),
-        child: const Icon(Icons.psychology_rounded, color: AppColors.primary, size: 24),
+        child: Image.asset('assets/images/logo2.png', width: 48, height: 48),
       ),
       const SizedBox(width: 12),
-      Text('Informatics AI Tutor', style: GoogleFonts.inter(
-        fontSize: isD ? 18 : 15, fontWeight: FontWeight.w700,
-        color: AppColors.textPrimary, letterSpacing: -0.3,
+      Text('LOCK-IN', style: GoogleFonts.inter(
+        fontSize: isD ? 20 : 17, fontWeight: FontWeight.w800,
+        color: AppColors.textPrimary, letterSpacing: 1.5,
       )),
       const Spacer(),
     ]),

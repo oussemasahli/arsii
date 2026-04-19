@@ -44,7 +44,7 @@ class HomeScreen extends StatelessWidget {
                       ),
                       const SizedBox(width: 12),
                       Text(
-                        'Informatics AI Tutor',
+                        'LOCK-IN',
                         style: GoogleFonts.inter(
                           fontSize: 18,
                           fontWeight: FontWeight.w700,

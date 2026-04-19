@@ -22,7 +22,7 @@ class ArsiiApp extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return MaterialApp(
-      title: 'Informatics AI Tutor',
+      title: 'LOCK-IN',
       debugShowCheckedModeBanner: false,
       theme: AppTheme.darkTheme,
       home: const AuthGate(),

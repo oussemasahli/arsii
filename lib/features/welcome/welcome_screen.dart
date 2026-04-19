@@ -140,19 +140,19 @@ class _WelcomeScreenState extends State<WelcomeScreen>
           border: Border.all(color: AppColors.primary.withOpacity(0.3)),
           color: AppColors.primarySurface,
         ),
-        child: const Icon(Icons.psychology_rounded, color: AppColors.primary, size: 24),
+        child: Image.asset('assets/images/logo2.png', width: 48, height: 48),
       ),
       const SizedBox(width: 12),
-      Text('Informatics AI Tutor', style: GoogleFonts.inter(
-        fontSize: isD ? 18 : 15, fontWeight: FontWeight.w700,
-        color: AppColors.textPrimary, letterSpacing: -0.3)),
+      Text('LOCK-IN', style: GoogleFonts.inter(
+        fontSize: isD ? 20 : 17, fontWeight: FontWeight.w800,
+        color: AppColors.textPrimary, letterSpacing: 1.5)),
       const Spacer(),
       if (isD) ...[
-        _NavLink(label: 'Features', onTap: () {}),
+        _NavLink(label: 'Features', onTap: _showFeaturesDialog),
         const SizedBox(width: 32),
-        _NavLink(label: 'Curriculum', onTap: () {}),
+        _NavLink(label: 'Curriculum', onTap: _showCurriculumDialog),
         const SizedBox(width: 32),
-        _NavLink(label: 'About', onTap: () {}),
+        _NavLink(label: 'About', onTap: _showAboutDialog),
         const SizedBox(width: 32),
       ],
     ]),
@@ -190,7 +190,7 @@ class _WelcomeScreenState extends State<WelcomeScreen>
     children: [
       _HeroIllustration(size: isD ? 320 : 240),
       SizedBox(height: isD ? 36 : 28),
-      Text('Welcome to Informatics AI Tutor', textAlign: TextAlign.center,
+      Text('Welcome to LOCK-IN', textAlign: TextAlign.center,
         style: GoogleFonts.inter(fontSize: isD ? 30 : 24, fontWeight: FontWeight.w800,
           color: AppColors.textPrimary, height: 1.2, letterSpacing: -0.8)),
       const SizedBox(height: 16),
@@ -203,7 +203,231 @@ class _WelcomeScreenState extends State<WelcomeScreen>
           style: GoogleFonts.inter(fontSize: isD ? 15 : 14,
             color: AppColors.textSecondary, height: 1.65))),
     ],
+  );  // ── FEATURES DIALOG ──────────────────────────────────────────
+  void _showFeaturesDialog() {
+    showDialog(context: context, builder: (_) => Dialog(
+      backgroundColor: AppColors.backgroundCard,
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+      child: ConstrainedBox(
+        constraints: const BoxConstraints(maxWidth: 620, maxHeight: 560),
+        child: Padding(
+          padding: const EdgeInsets.all(32),
+          child: Column(mainAxisSize: MainAxisSize.min, children: [
+            Row(children: [
+              Container(padding: const EdgeInsets.all(8), decoration: BoxDecoration(
+                gradient: AppColors.primaryGradient, borderRadius: BorderRadius.circular(10)),
+                child: const Icon(Icons.auto_awesome_rounded, color: Colors.white, size: 20)),
+              const SizedBox(width: 12),
+              Text('Platform Features', style: GoogleFonts.inter(fontSize: 22, fontWeight: FontWeight.w800, color: AppColors.textPrimary)),
+              const Spacer(),
+              IconButton(onPressed: () => Navigator.pop(context), icon: const Icon(Icons.close_rounded, color: AppColors.textMuted)),
+            ]),
+            const SizedBox(height: 24),
+            Expanded(child: SingleChildScrollView(child: Column(children: [
+              _featureRow(Icons.psychology_rounded, 'AI-Powered Tutoring', 'Personalized lessons and feedback adapted to your learning pace and weak areas using advanced AI.', AppColors.primary),
+              _featureRow(Icons.assessment_rounded, 'Smart Evaluation', 'Take placement tests to determine your level. The platform continuously tracks your progress.', AppColors.secondary),
+              _featureRow(Icons.menu_book_rounded, 'Structured Curriculum', '5 tracks covering Programming, Algorithms, Data Structures, Databases, and Web fundamentals.', const Color(0xFF10B981)),
+              _featureRow(Icons.fitness_center_rounded, 'Targeted Exercises', 'Practice drills focused on your weak topics, generated dynamically based on your performance.', const Color(0xFFF59E0B)),
+              _featureRow(Icons.leaderboard_rounded, 'Progress Analytics', 'Track mastery, streaks, and confidence trends across all subjects with visual dashboards.', const Color(0xFFEC4899)),
+              _featureRow(Icons.verified_rounded, 'AI Recommendations', 'Get personalized study plans and next-step suggestions powered by AI analysis of your results.', const Color(0xFF8B5CF6)),
+            ]))),
+          ]),
+        ),
+      ),
+    ));
+  }
+
+  Widget _featureRow(IconData icon, String title, String desc, Color c) => Padding(
+    padding: const EdgeInsets.only(bottom: 18),
+    child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
+      Container(padding: const EdgeInsets.all(10), decoration: BoxDecoration(
+        color: c.withOpacity(0.12), borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: c.withOpacity(0.25))),
+        child: Icon(icon, color: c, size: 22)),
+      const SizedBox(width: 16),
+      Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+        Text(title, style: GoogleFonts.inter(fontSize: 15, fontWeight: FontWeight.w700, color: AppColors.textPrimary)),
+        const SizedBox(height: 4),
+        Text(desc, style: GoogleFonts.inter(fontSize: 13, color: AppColors.textSecondary, height: 1.5)),
+      ])),
+    ]),
   );
+
+  // ── CURRICULUM DIALOG ────────────────────────────────────────
+  void _showCurriculumDialog() {
+    final tracks = [
+      {'icon': Icons.code_rounded, 'color': AppColors.primary, 'name': 'Programming',
+        'lessons': ['Variables & Data Types', 'Conditionals & Decisions', 'Functions & Reuse']},
+      {'icon': Icons.account_tree_rounded, 'color': AppColors.secondary, 'name': 'Algorithms',
+        'lessons': ['Big O Intuition', 'Sorting Strategies', 'Recursion Foundations']},
+      {'icon': Icons.storage_rounded, 'color': const Color(0xFF10B981), 'name': 'Data Structures',
+        'lessons': ['Arrays vs Linked Lists', 'Stacks & Queues', 'Hash Tables Basics']},
+      {'icon': Icons.table_chart_rounded, 'color': const Color(0xFFF59E0B), 'name': 'Databases',
+        'lessons': ['Relational Model Essentials', 'SELECT & Filtering', 'JOINs Without Fear']},
+      {'icon': Icons.language_rounded, 'color': const Color(0xFFEC4899), 'name': 'Web Fundamentals',
+        'lessons': ['HTML Structure Basics', 'CSS Layout with Flexbox', 'JavaScript Async Concepts']},
+    ];
+
+    showDialog(context: context, builder: (_) => Dialog(
+      backgroundColor: AppColors.backgroundCard,
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+      child: ConstrainedBox(
+        constraints: const BoxConstraints(maxWidth: 640, maxHeight: 600),
+        child: Padding(
+          padding: const EdgeInsets.all(32),
+          child: Column(mainAxisSize: MainAxisSize.min, children: [
+            Row(children: [
+              Container(padding: const EdgeInsets.all(8), decoration: BoxDecoration(
+                gradient: AppColors.primaryGradient, borderRadius: BorderRadius.circular(10)),
+                child: const Icon(Icons.menu_book_rounded, color: Colors.white, size: 20)),
+              const SizedBox(width: 12),
+              Text('Curriculum', style: GoogleFonts.inter(fontSize: 22, fontWeight: FontWeight.w800, color: AppColors.textPrimary)),
+              const Spacer(),
+              IconButton(onPressed: () => Navigator.pop(context), icon: const Icon(Icons.close_rounded, color: AppColors.textMuted)),
+            ]),
+            const SizedBox(height: 8),
+            Text('5 learning tracks · 15+ lessons · Beginner to Advanced',
+              style: GoogleFonts.inter(fontSize: 13, color: AppColors.textMuted)),
+            const SizedBox(height: 20),
+            Expanded(child: SingleChildScrollView(child: Column(
+              children: tracks.map((t) => _trackSection(
+                t['icon'] as IconData, t['name'] as String,
+                t['lessons'] as List<String>, t['color'] as Color,
+              )).toList(),
+            ))),
+          ]),
+        ),
+      ),
+    ));
+  }
+
+  Widget _trackSection(IconData icon, String name, List<String> lessons, Color c) => Padding(
+    padding: const EdgeInsets.only(bottom: 20),
+    child: Container(
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        borderRadius: BorderRadius.circular(14),
+        color: c.withOpacity(0.06),
+        border: Border.all(color: c.withOpacity(0.18)),
+      ),
+      child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+        Row(children: [
+          Icon(icon, color: c, size: 20),
+          const SizedBox(width: 10),
+          Text(name, style: GoogleFonts.inter(fontSize: 15, fontWeight: FontWeight.w700, color: AppColors.textPrimary)),
+          const Spacer(),
+          Container(padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3), decoration: BoxDecoration(
+            color: c.withOpacity(0.15), borderRadius: BorderRadius.circular(6)),
+            child: Text('${lessons.length} lessons', style: GoogleFonts.inter(fontSize: 11, fontWeight: FontWeight.w600, color: c))),
+        ]),
+        const SizedBox(height: 10),
+        ...lessons.map((l) => Padding(
+          padding: const EdgeInsets.only(bottom: 6),
+          child: Row(children: [
+            Icon(Icons.play_circle_outline_rounded, size: 16, color: c.withOpacity(0.6)),
+            const SizedBox(width: 8),
+            Text(l, style: GoogleFonts.inter(fontSize: 13, color: AppColors.textSecondary)),
+          ]),
+        )),
+      ]),
+    ),
+  );
+
+  // ── ABOUT DIALOG ─────────────────────────────────────────────
+  void _showAboutDialog() {
+    showDialog(context: context, builder: (_) => Dialog(
+      backgroundColor: AppColors.backgroundCard,
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+      child: ConstrainedBox(
+        constraints: const BoxConstraints(maxWidth: 520, maxHeight: 480),
+        child: Padding(
+          padding: const EdgeInsets.all(32),
+          child: Column(mainAxisSize: MainAxisSize.min, children: [
+            Row(children: [
+              Container(padding: const EdgeInsets.all(8), decoration: BoxDecoration(
+                gradient: AppColors.primaryGradient, borderRadius: BorderRadius.circular(10)),
+                child: const Icon(Icons.group_rounded, color: Colors.white, size: 20)),
+              const SizedBox(width: 12),
+              Text('About LOCK-IN', style: GoogleFonts.inter(fontSize: 22, fontWeight: FontWeight.w800, color: AppColors.textPrimary)),
+              const Spacer(),
+              IconButton(onPressed: () => Navigator.pop(context), icon: const Icon(Icons.close_rounded, color: AppColors.textMuted)),
+            ]),
+            const SizedBox(height: 24),
+            Expanded(child: SingleChildScrollView(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+              // Team
+              Container(
+                width: double.infinity,
+                padding: const EdgeInsets.all(20),
+                decoration: BoxDecoration(
+                  borderRadius: BorderRadius.circular(14),
+                  gradient: LinearGradient(colors: [
+                    AppColors.primary.withOpacity(0.08),
+                    AppColors.secondary.withOpacity(0.06),
+                  ], begin: Alignment.topLeft, end: Alignment.bottomRight),
+                  border: Border.all(color: AppColors.primary.withOpacity(0.15)),
+                ),
+                child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                  Text('Team DigaDiga', style: GoogleFonts.inter(fontSize: 18, fontWeight: FontWeight.w800, color: AppColors.primary)),
+                  const SizedBox(height: 8),
+                  Text(
+                    'We are a team of informatics students passionate about making '
+                    'computer science education accessible, adaptive, and engaging. '
+                    'LOCK-IN is our vision of what studying should feel like — '
+                    'smart, personalized, and always in your corner.',
+                    style: GoogleFonts.inter(fontSize: 13, color: AppColors.textSecondary, height: 1.6),
+                  ),
+                ]),
+              ),
+              const SizedBox(height: 20),
+              // Mission
+              Text('Our Mission', style: GoogleFonts.inter(fontSize: 16, fontWeight: FontWeight.w700, color: AppColors.textPrimary)),
+              const SizedBox(height: 8),
+              Text(
+                'To build an AI-powered learning companion that understands each '
+                'student\'s strengths and weaknesses, delivers tailored lessons and exercises, '
+                'and provides real-time feedback — helping every learner master informatics '
+                'at their own pace.',
+                style: GoogleFonts.inter(fontSize: 13, color: AppColors.textSecondary, height: 1.6),
+              ),
+              const SizedBox(height: 20),
+              // What we cover
+              Text('What We Cover', style: GoogleFonts.inter(fontSize: 16, fontWeight: FontWeight.w700, color: AppColors.textPrimary)),
+              const SizedBox(height: 10),
+              Wrap(spacing: 8, runSpacing: 8, children: [
+                _chip('Programming', Icons.code_rounded, AppColors.primary),
+                _chip('Algorithms', Icons.account_tree_rounded, AppColors.secondary),
+                _chip('Data Structures', Icons.storage_rounded, const Color(0xFF10B981)),
+                _chip('Databases', Icons.table_chart_rounded, const Color(0xFFF59E0B)),
+                _chip('Web Dev', Icons.language_rounded, const Color(0xFFEC4899)),
+              ]),
+              const SizedBox(height: 20),
+              // Tech
+              Text('Built With', style: GoogleFonts.inter(fontSize: 16, fontWeight: FontWeight.w700, color: AppColors.textPrimary)),
+              const SizedBox(height: 10),
+              Wrap(spacing: 8, runSpacing: 8, children: [
+                _chip('Flutter', Icons.flutter_dash_rounded, AppColors.primary),
+                _chip('Firebase', Icons.cloud_rounded, const Color(0xFFF59E0B)),
+                _chip('OpenRouter AI', Icons.psychology_rounded, AppColors.secondary),
+              ]),
+            ]))),
+          ]),
+        ),
+      ),
+    ));
+  }
+
+  Widget _chip(String label, IconData icon, Color c) => Container(
+    padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+    decoration: BoxDecoration(
+      color: c.withOpacity(0.1), borderRadius: BorderRadius.circular(8),
+      border: Border.all(color: c.withOpacity(0.25))),
+    child: Row(mainAxisSize: MainAxisSize.min, children: [
+      Icon(icon, size: 14, color: c),
+      const SizedBox(width: 6),
+      Text(label, style: GoogleFonts.inter(fontSize: 12, fontWeight: FontWeight.w600, color: c)),
+    ]),
+  );
+
 
   // ── Login Card ───────────────────────────────────────────────────
   Widget _loginCard() => ConstrainedBox(
