@@ -7,6 +7,7 @@ import '../../shared/widgets/abstract_background.dart';
 import '../../shared/widgets/dashboard_hero_card.dart';
 import '../../shared/widgets/dashboard_cards.dart';
 import '../../shared/widgets/gradient_button.dart';
+import '../profile/profile_screen.dart';
 
 enum _DashboardTab { home, lessons, progress, exercises, aiTutor, settings }
 
@@ -177,9 +178,13 @@ class _DashboardScreenState extends State<DashboardScreen>
           fontSize: 12, fontWeight: FontWeight.w500, color: AppColors.textMuted)),
       ]),
       const Spacer(),
-      // Avatar
+      // Avatar → Profile
       MouseRegion(cursor: SystemMouseCursors.click, child: GestureDetector(
-        onTap: () async => await _auth.signOut(),
+        onTap: () {
+          Navigator.of(context).push(
+            MaterialPageRoute(builder: (_) => const ProfileScreen()),
+          );
+        },
         child: Container(
           padding: const EdgeInsets.all(8),
           decoration: BoxDecoration(
