@@ -1,10 +1,12 @@
+import 'package:flutter_dotenv/flutter_dotenv.dart';
+
 /// OpenRouter API configuration.
-/// Paste your API key below.
 class ApiConfig {
   ApiConfig._();
 
-  /// OpenRouter API key.
-  static const String openRouterApiKey = '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';
+  /// OpenRouter API key loaded from .env.
+  static String get openRouterApiKey =>
+      (dotenv.env['OPENROUTER_API_KEY'] ?? '').trim();
 
   /// OpenRouter API endpoint
   static const String openRouterUrl = 'https://openrouter.ai/api/v1/chat/completions';

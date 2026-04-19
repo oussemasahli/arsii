@@ -116,6 +116,9 @@ class AiService {
     int maxAttempts = 3,
     Duration timeout = const Duration(seconds: 45),
   }) async {
+    final apiKey = ApiConfig.openRouterApiKey;
+    if (apiKey.isEmpty) return null;
+
     for (int attempt = 1; attempt <= maxAttempts; attempt++) {
       try {
         final response = await http
@@ -123,7 +126,7 @@ class AiService {
               Uri.parse(ApiConfig.openRouterUrl),
               headers: {
                 'Content-Type': 'application/json',
-                'Authorization': 'Bearer ${ApiConfig.openRouterApiKey}',
+                'Authorization': 'Bearer $apiKey',
                 'HTTP-Referer': 'https://arsii.local',
                 'X-Title': title,
               },
