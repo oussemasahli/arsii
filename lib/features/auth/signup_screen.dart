@@ -77,7 +77,8 @@ class _SignUpScreenState extends State<SignUpScreen>
     try {
       final cred = await _auth.signUp(email: email, password: pass);
       await cred.user?.updateDisplayName(name);
-      // Auth state listener in main.dart handles navigation
+      // Pop this screen so AuthGate (underneath) picks up the new auth state
+      if (mounted) Navigator.of(context).pop();
     } catch (e) {
       if (mounted) {
         String msg = 'Something went wrong.';
