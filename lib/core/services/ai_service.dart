@@ -53,6 +53,7 @@ class AiService {
   /// Generate quiz questions for the given subjects (5 per subject).
   Future<List<AiQuestion>> generateQuiz(List<String> subjectNames) async {
     if (subjectNames.isEmpty) return const [];
+    
 
     final subjectList = subjectNames.join(', ');
     final totalQ = subjectNames.length * 5;
@@ -80,28 +81,44 @@ Return ONLY a valid JSON array, no markdown, no code fences:
 [{"subject":"...","question":"...","options":["A","B","C","D"],"correctIndex":0,"explanation":"..."}]
 ''';
 
-    try {
-      final response = await http.post(
-        Uri.parse(ApiConfig.openRouterUrl),
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': 'Bearer ${ApiConfig.openRouterApiKey}',
-          'HTTP-Referer': 'https://arsii.local',
-          'X-Title': 'Arsii Evaluation Quiz',
-        },
-        body: jsonEncode({
-          'model': ApiConfig.model,
-          'messages': [
-            {'role': 'user', 'content': prompt},
-          ],
-          'temperature': 0.7,
-          'max_tokens': 4000,
-        }),
-      );
+    final response = await http.post(
+      Uri.parse(ApiConfig.openRouterUrl),
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': 'Bearer ${ApiConfig.openRouterApiKey}',
+        'HTTP-Referer': 'https://arsii.local',
+        'X-Title': 'Arsii Evaluation Quiz',
+      },
+      body: jsonEncode({
+        'model': ApiConfig.model,
+        'messages': [
+          {'role': 'user', 'content': prompt},
+        ],
+        'temperature': 0.7,
+        'max_tokens': 4000,
+      }),
+    );
 
-      if (response.statusCode != 200) {
-        throw Exception('API error: ${response.statusCode} ${response.body}');
+    if (response.statusCode != 200) {
+      String message = 'OpenRouter request failed (${response.statusCode}).';
+      try {
+        final err = jsonDecode(response.body) as Map<String, dynamic>;
+        final apiMessage = err['error']?['message'] as String?;
+        if (apiMessage != null && apiMessage.trim().isNotEmpty) {
+          message = apiMessage;
+        }
+      } catch (_) {
+        // Keep generic message if response body is not valid JSON.
       }
+
+      if (response.statusCode == 401) {
+        throw Exception(
+          'OpenRouter authentication failed: $message. Your API key is invalid, revoked, or belongs to a missing account.',
+        );
+      }
+
+      throw Exception(message);
+    }
 
       final data = jsonDecode(response.body);
       final content = data['choices']?[0]?['message']?['content'] as String?;
@@ -135,10 +152,7 @@ Return ONLY a valid JSON array, no markdown, no code fences:
         throw const FormatException('No valid subject-based questions were returned.');
       }
 
-      return questions;
-    } catch (e) {
-      throw Exception('Failed to generate AI quiz: $e');
-    }
+    return questions;
   }
 
   String _extractFirstJsonArray(String input) {
