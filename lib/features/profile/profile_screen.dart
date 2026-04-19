@@ -2,18 +2,50 @@ import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import '../../core/theme/app_colors.dart';
 import '../../core/services/auth_service.dart';
+import '../welcome/welcome_screen.dart';
 import '../../shared/widgets/abstract_background.dart';
 import '../../shared/widgets/gradient_button.dart';
 import '../../shared/widgets/glow_card.dart';
 
 /// Profile / Account screen – shows user info and sign-out option.
-class ProfileScreen extends StatelessWidget {
+class ProfileScreen extends StatefulWidget {
   const ProfileScreen({super.key});
 
   @override
+  State<ProfileScreen> createState() => _ProfileScreenState();
+}
+
+class _ProfileScreenState extends State<ProfileScreen> {
+  final AuthService _auth = AuthService();
+  bool _isSigningOut = false;
+
+  Future<void> _handleSignOut() async {
+    if (_isSigningOut) return;
+
+    setState(() => _isSigningOut = true);
+    try {
+      await _auth.signOut();
+      if (!mounted) return;
+
+      Navigator.of(context).pushAndRemoveUntil(
+        MaterialPageRoute(builder: (_) => const WelcomeScreen()),
+        (route) => false,
+      );
+    } catch (_) {
+      if (!mounted) return;
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Sign out failed. Please try again.'),
+        ),
+      );
+      setState(() => _isSigningOut = false);
+    }
+  }
+
+  @override
   Widget build(BuildContext context) {
-    final auth = AuthService();
-    final user = auth.currentUser;
+    final user = _auth.currentUser;
     final email = user?.email ?? 'Anonymous';
     final displayName = user?.displayName ?? 'Student';
     final initial = displayName[0].toUpperCase();
@@ -155,17 +187,11 @@ class ProfileScreen extends StatelessWidget {
 
                         // Sign-out button
                         GradientButton(
-                          label: 'Sign Out',
-                          icon: Icons.logout_rounded,
-                          onPressed: () async {
-                            await auth.signOut();
-                            if (context.mounted) {
-                              // Pop back to root – AuthGate will
-                              // redirect to WelcomeScreen automatically.
-                              Navigator.of(context)
-                                  .popUntil((r) => r.isFirst);
-                            }
-                          },
+                          label: _isSigningOut ? 'Signing Out...' : 'Sign Out',
+                          icon: _isSigningOut
+                              ? Icons.hourglass_top_rounded
+                              : Icons.logout_rounded,
+                          onPressed: _isSigningOut ? null : _handleSignOut,
                         ),
                         const SizedBox(height: 48),
                       ],

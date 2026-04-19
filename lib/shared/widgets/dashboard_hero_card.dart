@@ -92,28 +92,38 @@ class _DashboardHeroCardState extends State<DashboardHeroCard> {
             ]),
           ),
           const SizedBox(height: 20),
-          Align(
-            alignment: Alignment.centerRight,
-            child: MouseRegion(
-              cursor: SystemMouseCursors.click,
-              child: GestureDetector(
-                onTap: widget.onContinue,
-                child: Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
-                  decoration: BoxDecoration(
-                    gradient: LinearGradient(colors: [widget.accentColor, widget.accentColor.withOpacity(0.8)]),
-                    borderRadius: BorderRadius.circular(12),
-                    boxShadow: [BoxShadow(color: widget.accentColor.withOpacity(0.2), blurRadius: 12)],
+          LayoutBuilder(
+            builder: (context, constraints) {
+              final isNarrow = constraints.maxWidth < 460;
+              final button = MouseRegion(
+                cursor: SystemMouseCursors.click,
+                child: GestureDetector(
+                  onTap: widget.onContinue,
+                  child: Container(
+                    width: isNarrow ? double.infinity : null,
+                    padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
+                    decoration: BoxDecoration(
+                      gradient: LinearGradient(colors: [widget.accentColor, widget.accentColor.withOpacity(0.8)]),
+                      borderRadius: BorderRadius.circular(12),
+                      boxShadow: [BoxShadow(color: widget.accentColor.withOpacity(0.2), blurRadius: 12)],
+                    ),
+                    child: Row(
+                      mainAxisSize: isNarrow ? MainAxisSize.max : MainAxisSize.min,
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        Text('Continue Learning', style: GoogleFonts.inter(
+                          fontSize: 14, fontWeight: FontWeight.w700, color: AppColors.textOnPrimary)),
+                        const SizedBox(width: 8),
+                        const Icon(Icons.arrow_forward_rounded, size: 18, color: AppColors.textOnPrimary),
+                      ],
+                    ),
                   ),
-                  child: Row(mainAxisSize: MainAxisSize.min, children: [
-                    Text('Continue Learning', style: GoogleFonts.inter(
-                      fontSize: 14, fontWeight: FontWeight.w700, color: AppColors.textOnPrimary)),
-                    const SizedBox(width: 8),
-                    const Icon(Icons.arrow_forward_rounded, size: 18, color: AppColors.textOnPrimary),
-                  ]),
                 ),
-              ),
-            ),
+              );
+
+              if (isNarrow) return button;
+              return Align(alignment: Alignment.centerRight, child: button);
+            },
           ),
         ]),
       ),

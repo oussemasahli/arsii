@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:firebase_auth/firebase_auth.dart';
 import 'package:google_fonts/google_fonts.dart';
 import '../../core/theme/app_colors.dart';
 import '../../core/services/auth_service.dart';
@@ -7,9 +8,15 @@ import '../../shared/widgets/abstract_background.dart';
 import '../../shared/widgets/dashboard_hero_card.dart';
 import '../../shared/widgets/dashboard_cards.dart';
 import '../../shared/widgets/gradient_button.dart';
+import '../lessons/lesson_details_screen.dart';
+import '../lessons/lessons_screen.dart';
+import '../lessons/models/personalized_lesson.dart';
+import '../lessons/services/firestore_lessons_service.dart';
+import '../exercises/exercises_hub_screen.dart';
+import '../progress/progress_screen.dart';
 import '../profile/profile_screen.dart';
 
-enum _Tab { home, lessons, progress, exercises, aiTutor, settings }
+enum _Tab { home, lessons, progress, exercises, settings }
 
 class DashboardScreen extends StatefulWidget {
   const DashboardScreen({super.key});
@@ -21,11 +28,16 @@ class _DashboardScreenState extends State<DashboardScreen>
     with SingleTickerProviderStateMixin {
   final _auth = AuthService();
   final _studentService = StudentService();
+  final _lessonsService = FirestoreLessonsService();
   bool _sidebarExpanded = false;
   _Tab _activeTab = _Tab.home;
   StudentProfile? _profile;
+  PersonalizedLesson? _lastEnteredLesson;
   bool _loading = true;
   bool _aiLoading = false;
+  User? _settingsUser;
+  bool _sendingVerification = false;
+  bool _refreshingVerification = false;
 
   late final AnimationController _fade;
   late final Animation<double> _fadeIn;
@@ -35,8 +47,217 @@ class _DashboardScreenState extends State<DashboardScreen>
     super.initState();
     _fade = AnimationController(vsync: this, duration: const Duration(milliseconds: 800));
     _fadeIn = CurvedAnimation(parent: _fade, curve: Curves.easeOut);
+    _settingsUser = _auth.currentUser;
     Future.delayed(const Duration(milliseconds: 100), () { if (mounted) _fade.forward(); });
     _loadProfile();
+  }
+
+  String _authErrorMessage(FirebaseAuthException e) {
+    switch (e.code) {
+      case 'invalid-email':
+        return 'Please enter a valid email address.';
+      case 'too-many-requests':
+        return 'Too many attempts. Please wait a moment and try again.';
+      case 'user-not-found':
+        return 'No account was found for that email address.';
+      case 'missing-email':
+        return 'Email is required to continue.';
+      case 'network-request-failed':
+        return 'Network error. Please check your internet connection.';
+      case 'no-current-user':
+        return 'You need to be signed in to use this action.';
+      default:
+        return e.message ?? 'Something went wrong. Please try again.';
+    }
+  }
+
+  void _showMessage(String message, {bool error = false}) {
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(message),
+        backgroundColor: error ? const Color(0xFFB91C1C) : null,
+      ),
+    );
+  }
+
+  Future<void> _sendVerificationEmail() async {
+    if (_sendingVerification) return;
+
+    final user = _settingsUser ?? _auth.currentUser;
+    if (user == null) {
+      _showMessage('No signed-in account found.', error: true);
+      return;
+    }
+    if (user.emailVerified) {
+      _showMessage('Your email is already verified.');
+      return;
+    }
+
+    setState(() => _sendingVerification = true);
+    try {
+      await _auth.sendEmailVerification();
+      _showMessage('Verification email sent. Please check your inbox.');
+    } on FirebaseAuthException catch (e) {
+      _showMessage(_authErrorMessage(e), error: true);
+    } catch (_) {
+      _showMessage('Unable to send verification email. Please try again.', error: true);
+    } finally {
+      if (mounted) {
+        setState(() => _sendingVerification = false);
+      }
+    }
+  }
+
+  Future<void> _refreshVerificationStatus() async {
+    if (_refreshingVerification) return;
+
+    setState(() => _refreshingVerification = true);
+    try {
+      final updatedUser = await _auth.reloadCurrentUser();
+      if (!mounted) return;
+
+      setState(() => _settingsUser = updatedUser);
+      if (updatedUser?.emailVerified == true) {
+        _showMessage('Email verified successfully.');
+      } else {
+        _showMessage('Verification status refreshed.');
+      }
+    } on FirebaseAuthException catch (e) {
+      _showMessage(_authErrorMessage(e), error: true);
+    } catch (_) {
+      _showMessage('Could not refresh verification status.', error: true);
+    } finally {
+      if (mounted) {
+        setState(() => _refreshingVerification = false);
+      }
+    }
+  }
+
+  Future<void> _showResetPasswordDialog() async {
+    final initialEmail = (_settingsUser ?? _auth.currentUser)?.email ?? '';
+    final emailController = TextEditingController(text: initialEmail);
+    final formKey = GlobalKey<FormState>();
+    var isSubmitting = false;
+
+    await showDialog<void>(
+      context: context,
+      builder: (dialogContext) {
+        return StatefulBuilder(
+          builder: (context, setDialogState) {
+            return AlertDialog(
+              backgroundColor: AppColors.backgroundCard,
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+              title: Text(
+                'Reset Password',
+                style: GoogleFonts.inter(
+                  fontWeight: FontWeight.w700,
+                  color: AppColors.textPrimary,
+                ),
+              ),
+              content: Form(
+                key: formKey,
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      'Confirm your email address to receive a password reset link.',
+                      style: GoogleFonts.inter(
+                        fontSize: 13,
+                        color: AppColors.textSecondary,
+                      ),
+                    ),
+                    const SizedBox(height: 14),
+                    TextFormField(
+                      controller: emailController,
+                      keyboardType: TextInputType.emailAddress,
+                      autofillHints: const [AutofillHints.email],
+                      style: GoogleFonts.inter(color: AppColors.textPrimary),
+                      decoration: InputDecoration(
+                        labelText: 'Email',
+                        labelStyle: GoogleFonts.inter(color: AppColors.textMuted),
+                        filled: true,
+                        fillColor: AppColors.backgroundSubtle,
+                        border: OutlineInputBorder(
+                          borderRadius: BorderRadius.circular(12),
+                          borderSide: BorderSide(color: AppColors.border),
+                        ),
+                        enabledBorder: OutlineInputBorder(
+                          borderRadius: BorderRadius.circular(12),
+                          borderSide: BorderSide(color: AppColors.border),
+                        ),
+                        focusedBorder: OutlineInputBorder(
+                          borderRadius: BorderRadius.circular(12),
+                          borderSide: BorderSide(color: AppColors.primary),
+                        ),
+                      ),
+                      validator: (value) {
+                        final email = value?.trim() ?? '';
+                        if (email.isEmpty) return 'Email is required.';
+                        final isValid = RegExp(r'^[^@\s]+@[^@\s]+\.[^@\s]+$').hasMatch(email);
+                        if (!isValid) return 'Please enter a valid email address.';
+                        return null;
+                      },
+                    ),
+                  ],
+                ),
+              ),
+              actions: [
+                TextButton(
+                  onPressed: isSubmitting ? null : () => Navigator.of(dialogContext).pop(),
+                  child: Text(
+                    'Cancel',
+                    style: GoogleFonts.inter(color: AppColors.textSecondary),
+                  ),
+                ),
+                FilledButton.icon(
+                  onPressed: isSubmitting
+                      ? null
+                      : () async {
+                          if (!(formKey.currentState?.validate() ?? false)) return;
+
+                          setDialogState(() => isSubmitting = true);
+                          try {
+                            await _auth.resetPassword(email: emailController.text.trim());
+                            if (!mounted) return;
+                            Navigator.of(dialogContext).pop();
+                            _showMessage('Password reset email sent. Please check your inbox.');
+                          } on FirebaseAuthException catch (e) {
+                            _showMessage(_authErrorMessage(e), error: true);
+                            if (Navigator.of(dialogContext).mounted) {
+                              setDialogState(() => isSubmitting = false);
+                            }
+                          } catch (_) {
+                            _showMessage('Unable to send password reset email.', error: true);
+                            if (Navigator.of(dialogContext).mounted) {
+                              setDialogState(() => isSubmitting = false);
+                            }
+                          }
+                        },
+                  icon: isSubmitting
+                      ? const SizedBox(
+                          width: 16,
+                          height: 16,
+                          child: CircularProgressIndicator(strokeWidth: 2),
+                        )
+                      : const Icon(Icons.email_outlined, size: 18),
+                  label: Text(
+                    isSubmitting ? 'Sending...' : 'Send Reset Email',
+                    style: GoogleFonts.inter(fontWeight: FontWeight.w600),
+                  ),
+                  style: FilledButton.styleFrom(
+                    backgroundColor: AppColors.primary,
+                  ),
+                ),
+              ],
+            );
+          },
+        );
+      },
+    );
+
+    emailController.dispose();
   }
 
   Future<void> _loadProfile() async {
@@ -44,6 +265,7 @@ class _DashboardScreenState extends State<DashboardScreen>
       final p = await _studentService.getProfile();
       if (mounted) {
         setState(() { _profile = p; _loading = false; });
+        await _syncLastEnteredLesson();
         // Refresh AI content in the background
         _refreshAi();
       }
@@ -60,9 +282,24 @@ class _DashboardScreenState extends State<DashboardScreen>
       final updated = await _studentService.refreshAiContent();
       if (mounted && updated != null) {
         setState(() { _profile = updated; _aiLoading = false; });
+        await _syncLastEnteredLesson();
       }
     } catch (_) {
       if (mounted) setState(() => _aiLoading = false);
+    }
+  }
+
+  Future<void> _syncLastEnteredLesson() async {
+    try {
+      final data = await _lessonsService.getPersonalizedLessons();
+      if (!mounted) return;
+      setState(() {
+        _lastEnteredLesson = data.continueLearning.isNotEmpty
+            ? data.continueLearning.first
+            : null;
+      });
+    } catch (_) {
+      // Keep existing fallback fields from profile if lessons query fails.
     }
   }
 
@@ -77,7 +314,6 @@ class _DashboardScreenState extends State<DashboardScreen>
       case _Tab.lessons: return 'Lessons';
       case _Tab.progress: return 'Progress';
       case _Tab.exercises: return 'Exercises';
-      case _Tab.aiTutor: return 'AI Tutor';
       case _Tab.settings: return 'Settings';
     }
   }
@@ -115,6 +351,15 @@ class _DashboardScreenState extends State<DashboardScreen>
     if (_activeTab == _Tab.home) {
       if (_loading) return const Center(child: CircularProgressIndicator(color: AppColors.primary, strokeWidth: 2.5));
       return isD ? _desktopHome(name) : _mobileHome(name);
+    }
+    if (_activeTab == _Tab.lessons) {
+      return const LessonsScreen();
+    }
+    if (_activeTab == _Tab.progress) {
+      return const ProgressScreen();
+    }
+    if (_activeTab == _Tab.exercises) {
+      return const ExercisesHubScreen();
     }
     if (_activeTab == _Tab.settings) return _settingsView(isD);
     return _placeholder(isD, _activeTab);
@@ -255,14 +500,85 @@ class _DashboardScreenState extends State<DashboardScreen>
   // ── HERO CARD ────────────────────────────────────────────────
   Widget _heroCard() {
     final p = _profile;
+    final last = _lastEnteredLesson;
     return DashboardHeroCard(
-      subjectName: p?.currentLessonSubject ?? 'Getting Started',
-      lessonTitle: p?.currentLessonTitle ?? 'Complete your onboarding',
-      description: p?.currentLessonDesc ?? 'Take the assessment quiz to personalize your dashboard.',
-      progress: p?.currentLessonProgress ?? 0.0,
+      subjectName: last?.lesson.skill.isNotEmpty == true
+          ? last!.lesson.skill
+          : (p?.currentLessonSubject ?? 'Getting Started'),
+      lessonTitle: last?.lesson.title ?? p?.currentLessonTitle ?? 'Complete your onboarding',
+      description: last?.lesson.description ?? p?.currentLessonDesc ?? 'Take the assessment quiz to personalize your dashboard.',
+      progress: last != null
+          ? (last.progress.completionPercent / 100).clamp(0.0, 1.0)
+          : (p?.currentLessonProgress ?? 0.0),
       accentColor: AppColors.secondary,
-      onContinue: () {},
+      onContinue: _openCurrentLesson,
     );
+  }
+
+  Future<void> _openCurrentLesson() async {
+    final profile = _profile;
+    if (profile == null) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Profile is still loading. Please try again.')),
+      );
+      return;
+    }
+
+    try {
+      final data = await _lessonsService.getPersonalizedLessons();
+      PersonalizedLesson? match = _lastEnteredLesson;
+
+      if (match != null) {
+        if (!mounted) return;
+        await Navigator.of(context).push(
+          MaterialPageRoute(builder: (_) => LessonDetailsScreen(item: match!)),
+        );
+        await _loadProfile();
+        return;
+      }
+
+      final all = <PersonalizedLesson>[
+        ...data.continueLearning,
+        ...data.recommended,
+        ...data.reviewWeakAreas,
+      ];
+
+      
+      if (profile.currentLessonTitle.trim().isNotEmpty) {
+        match = all.where((item) {
+          return item.lesson.title.toLowerCase().trim() ==
+              profile.currentLessonTitle.toLowerCase().trim();
+        }).cast<PersonalizedLesson?>().firstWhere(
+              (item) => item != null,
+              orElse: () => null,
+            );
+      }
+
+      match ??= data.continueLearning.isNotEmpty ? data.continueLearning.first : null;
+      match ??= data.recommended.isNotEmpty ? data.recommended.first : null;
+
+      if (match == null) {
+        if (!mounted) return;
+        setState(() => _activeTab = _Tab.lessons);
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('No active lesson found. Browse lessons to continue.')),
+        );
+        return;
+      }
+
+      if (!mounted) return;
+      await Navigator.of(context).push(
+        MaterialPageRoute(builder: (_) => LessonDetailsScreen(item: match!)),
+      );
+      await _loadProfile();
+    } catch (_) {
+      if (!mounted) return;
+      setState(() => _activeTab = _Tab.lessons);
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Unable to open current lesson. Showing lessons list instead.')),
+      );
+    }
   }
 
   // ── ACTIVITY ─────────────────────────────────────────────────
@@ -293,29 +609,209 @@ class _DashboardScreenState extends State<DashboardScreen>
   // ── SETTINGS ─────────────────────────────────────────────────
   Widget _settingsView(bool isD) => SingleChildScrollView(
     padding: EdgeInsets.symmetric(horizontal: isD ? 28 : 16, vertical: 8),
-    child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-      const SizedBox(height: 8),
-      Container(
-        padding: EdgeInsets.all(isD ? 28 : 22),
-        decoration: BoxDecoration(
-          borderRadius: BorderRadius.circular(20),
-          color: AppColors.backgroundCard,
-          border: Border.all(color: AppColors.border),
-          boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.25), blurRadius: 18, offset: const Offset(0, 6))],
-        ),
-        child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-          Text('Account Settings', style: GoogleFonts.inter(fontSize: isD ? 30 : 24, fontWeight: FontWeight.w800, color: AppColors.textPrimary, letterSpacing: -0.7)),
+    child: Builder(
+      builder: (context) {
+        final user = _settingsUser ?? _auth.currentUser;
+        final email = user?.email ?? _profile?.email ?? 'No email found';
+        final verified = user?.emailVerified ?? false;
+
+        return Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
           const SizedBox(height: 8),
-          if (_profile != null) ...[
-            Text('${_profile!.name}  •  ${_profile!.email}', style: GoogleFonts.inter(fontSize: 14, color: AppColors.textSecondary)),
-            const SizedBox(height: 4),
-            Text('Level: ${_profile!.level}  •  ${_profile!.subjects.length} subjects enrolled', style: GoogleFonts.inter(fontSize: 13, color: AppColors.textMuted)),
-          ],
+          Container(
+            padding: EdgeInsets.all(isD ? 28 : 22),
+            decoration: BoxDecoration(
+              borderRadius: BorderRadius.circular(20),
+              color: AppColors.backgroundCard,
+              border: Border.all(color: AppColors.border),
+              boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.25), blurRadius: 18, offset: const Offset(0, 6))],
+            ),
+            child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+              Text('Account Settings', style: GoogleFonts.inter(fontSize: isD ? 30 : 24, fontWeight: FontWeight.w800, color: AppColors.textPrimary, letterSpacing: -0.7)),
+              const SizedBox(height: 8),
+              if (_profile != null) ...[
+                Text('${_profile!.name}  •  ${_profile!.email}', style: GoogleFonts.inter(fontSize: 14, color: AppColors.textSecondary)),
+                const SizedBox(height: 4),
+                Text('Level: ${_profile!.level}  •  ${_profile!.subjects.length} subjects enrolled', style: GoogleFonts.inter(fontSize: 13, color: AppColors.textMuted)),
+              ],
+              const SizedBox(height: 26),
+              GradientButton(label: 'Log Out', icon: Icons.logout_rounded, onPressed: () async => await _auth.signOut()),
+            ]),
+          ),
+          const SizedBox(height: 18),
+          Container(
+            padding: EdgeInsets.all(isD ? 24 : 20),
+            decoration: BoxDecoration(
+              borderRadius: BorderRadius.circular(18),
+              color: AppColors.backgroundCard,
+              border: Border.all(color: AppColors.border),
+              boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.2), blurRadius: 12, offset: const Offset(0, 4))],
+            ),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(
+                  children: [
+                    Icon(Icons.verified_user_rounded, color: AppColors.primary, size: 20),
+                    const SizedBox(width: 10),
+                    Text(
+                      'Email Verification',
+                      style: GoogleFonts.inter(
+                        fontSize: 18,
+                        fontWeight: FontWeight.w700,
+                        color: AppColors.textPrimary,
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 14),
+                Text(
+                  email,
+                  style: GoogleFonts.inter(
+                    fontSize: 14,
+                    color: AppColors.textSecondary,
+                    fontWeight: FontWeight.w500,
+                  ),
+                ),
+                const SizedBox(height: 10),
+                Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                  decoration: BoxDecoration(
+                    color: verified ? AppColors.success.withOpacity(0.14) : const Color(0xFFB45309).withOpacity(0.14),
+                    borderRadius: BorderRadius.circular(10),
+                    border: Border.all(
+                      color: verified ? AppColors.success.withOpacity(0.4) : const Color(0xFFB45309).withOpacity(0.4),
+                    ),
+                  ),
+                  child: Row(
+                    children: [
+                      Icon(
+                        verified ? Icons.check_circle_rounded : Icons.error_outline_rounded,
+                        size: 16,
+                        color: verified ? AppColors.success : const Color(0xFFD97706),
+                      ),
+                      const SizedBox(width: 8),
+                      Expanded(
+                        child: Text(
+                          verified ? 'Email verified' : 'Your email is not verified',
+                          style: GoogleFonts.inter(
+                            fontSize: 13,
+                            fontWeight: FontWeight.w600,
+                            color: verified ? AppColors.success : const Color(0xFFD97706),
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                const SizedBox(height: 16),
+                Wrap(
+                  spacing: 12,
+                  runSpacing: 10,
+                  children: [
+                    FilledButton.icon(
+                      onPressed: (verified || user == null || _sendingVerification)
+                          ? null
+                          : _sendVerificationEmail,
+                      icon: _sendingVerification
+                          ? const SizedBox(
+                              width: 16,
+                              height: 16,
+                              child: CircularProgressIndicator(strokeWidth: 2),
+                            )
+                          : const Icon(Icons.mark_email_unread_outlined, size: 18),
+                      label: Text(
+                        _sendingVerification
+                            ? 'Sending...'
+                            : 'Send Verification Email',
+                        style: GoogleFonts.inter(fontWeight: FontWeight.w600),
+                      ),
+                      style: FilledButton.styleFrom(
+                        backgroundColor: AppColors.primary,
+                        disabledBackgroundColor: AppColors.primary.withOpacity(0.3),
+                      ),
+                    ),
+                    OutlinedButton.icon(
+                      onPressed: (_refreshingVerification || user == null)
+                          ? null
+                          : _refreshVerificationStatus,
+                      icon: _refreshingVerification
+                          ? const SizedBox(
+                              width: 16,
+                              height: 16,
+                              child: CircularProgressIndicator(strokeWidth: 2),
+                            )
+                          : const Icon(Icons.refresh_rounded, size: 18),
+                      label: Text(
+                        _refreshingVerification
+                            ? 'Refreshing...'
+                            : 'Refresh Verification Status',
+                        style: GoogleFonts.inter(fontWeight: FontWeight.w600),
+                      ),
+                      style: OutlinedButton.styleFrom(
+                        foregroundColor: AppColors.textPrimary,
+                        side: BorderSide(color: AppColors.border),
+                      ),
+                    ),
+                  ],
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(height: 18),
+          Container(
+            padding: EdgeInsets.all(isD ? 24 : 20),
+            decoration: BoxDecoration(
+              borderRadius: BorderRadius.circular(18),
+              color: AppColors.backgroundCard,
+              border: Border.all(color: AppColors.border),
+              boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.2), blurRadius: 12, offset: const Offset(0, 4))],
+            ),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(
+                  children: [
+                    Icon(Icons.lock_reset_rounded, color: AppColors.secondary, size: 20),
+                    const SizedBox(width: 10),
+                    Text(
+                      'Password & Security',
+                      style: GoogleFonts.inter(
+                        fontSize: 18,
+                        fontWeight: FontWeight.w700,
+                        color: AppColors.textPrimary,
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 10),
+                Text(
+                  'Reset your password securely by sending a reset link to your email address.',
+                  style: GoogleFonts.inter(fontSize: 13, color: AppColors.textSecondary),
+                ),
+                const SizedBox(height: 16),
+                FilledButton.icon(
+                  onPressed: user == null ? null : _showResetPasswordDialog,
+                  icon: const Icon(Icons.key_rounded, size: 18),
+                  label: Text(
+                    'Reset Password',
+                    style: GoogleFonts.inter(fontWeight: FontWeight.w600),
+                  ),
+                  style: FilledButton.styleFrom(backgroundColor: AppColors.secondary),
+                ),
+                if (user == null) ...[
+                  const SizedBox(height: 10),
+                  Text(
+                    'Sign in to manage password and verification settings.',
+                    style: GoogleFonts.inter(fontSize: 12, color: AppColors.textMuted),
+                  ),
+                ],
+              ],
+            ),
+          ),
           const SizedBox(height: 26),
-          GradientButton(label: 'Log Out', icon: Icons.logout_rounded, onPressed: () async => await _auth.signOut()),
-        ]),
-      ),
-    ]),
+        ]);
+      },
+    ),
   );
 
   // ── PLACEHOLDER ──────────────────────────────────────────────
@@ -324,7 +820,6 @@ class _DashboardScreenState extends State<DashboardScreen>
       _Tab.lessons: ['Lessons', Icons.menu_book_rounded, 'Personalized learning tracks', 'Browse adaptive lessons curated by your learning level and recent performance.'],
       _Tab.progress: ['Progress', Icons.leaderboard_rounded, 'Insightful performance analytics', 'Track mastery, consistency streaks, and topic-level confidence trends over time.'],
       _Tab.exercises: ['Exercises', Icons.fitness_center_rounded, 'Practice with targeted challenges', 'Strengthen weak areas with AI-selected exercises tailored to your current skill gaps.'],
-      _Tab.aiTutor: ['AI Tutor', Icons.smart_toy_rounded, 'On-demand guidance and feedback', 'Ask questions, get step-by-step explanations, and receive hints designed for your pace.'],
     };
     final d = data[tab]!;
     return SingleChildScrollView(
@@ -422,7 +917,6 @@ class _Sidebar extends StatelessWidget {
             _NavItem(icon: Icons.menu_book_rounded, label: 'Lessons', active: activeTab == _Tab.lessons, expanded: expanded, onTap: () => onTab(_Tab.lessons)),
             _NavItem(icon: Icons.leaderboard_rounded, label: 'Progress', active: activeTab == _Tab.progress, expanded: expanded, onTap: () => onTab(_Tab.progress)),
             _NavItem(icon: Icons.fitness_center_rounded, label: 'Exercises', active: activeTab == _Tab.exercises, expanded: expanded, onTap: () => onTab(_Tab.exercises)),
-            _NavItem(icon: Icons.smart_toy_rounded, label: 'AI Tutor', active: activeTab == _Tab.aiTutor, expanded: expanded, onTap: () => onTab(_Tab.aiTutor)),
             const Spacer(),
             _NavItem(icon: Icons.settings_rounded, label: 'Settings', active: activeTab == _Tab.settings, expanded: expanded, onTap: () => onTab(_Tab.settings)),
           ]),

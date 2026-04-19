@@ -1,4 +1,5 @@
 import 'dart:convert';
+import 'dart:async';
 import 'package:http/http.dart' as http;
 import '../config/api_config.dart';
 
@@ -48,8 +49,435 @@ class EvaluationResult {
   });
 }
 
+class AiGeneratedExercise {
+  final String type;
+  final String question;
+  final List<String> options;
+  final String correctAnswer;
+  final String explanation;
+  final String skill;
+  final int difficulty;
+
+  const AiGeneratedExercise({
+    required this.type,
+    required this.question,
+    required this.options,
+    required this.correctAnswer,
+    required this.explanation,
+    required this.skill,
+    required this.difficulty,
+  });
+
+  factory AiGeneratedExercise.fromJson(Map<String, dynamic> json) {
+    return AiGeneratedExercise(
+      type: (json['type'] ?? 'multiple_choice').toString(),
+      question: (json['question'] ?? '').toString(),
+      options: List<String>.from(json['options'] ?? const []),
+      correctAnswer: (json['correctAnswer'] ?? '').toString(),
+      explanation: (json['explanation'] ?? '').toString(),
+      skill: (json['skill'] ?? '').toString(),
+      difficulty: (json['difficulty'] is num)
+          ? (json['difficulty'] as num).toInt().clamp(1, 5)
+          : 2,
+    );
+  }
+}
+
+class AiShortAnswerEvaluation {
+  final bool isCorrect;
+  final double score;
+  final String explanation;
+  final String personalizedFeedback;
+
+  const AiShortAnswerEvaluation({
+    required this.isCorrect,
+    required this.score,
+    required this.explanation,
+    required this.personalizedFeedback,
+  });
+
+  factory AiShortAnswerEvaluation.fromJson(Map<String, dynamic> json) {
+    return AiShortAnswerEvaluation(
+      isCorrect: json['isCorrect'] == true,
+      score: (json['score'] is num)
+          ? (json['score'] as num).toDouble().clamp(0.0, 1.0)
+          : 0,
+      explanation: (json['explanation'] ?? '').toString(),
+      personalizedFeedback: (json['personalizedFeedback'] ?? '').toString(),
+    );
+  }
+}
+
 /// Service for AI-powered quiz generation and evaluation via OpenRouter.
 class AiService {
+  Future<http.Response?> _postOpenRouter({
+    required String title,
+    required Map<String, dynamic> body,
+    int maxAttempts = 3,
+    Duration timeout = const Duration(seconds: 45),
+  }) async {
+    for (int attempt = 1; attempt <= maxAttempts; attempt++) {
+      try {
+        final response = await http
+            .post(
+              Uri.parse(ApiConfig.openRouterUrl),
+              headers: {
+                'Content-Type': 'application/json',
+                'Authorization': 'Bearer ${ApiConfig.openRouterApiKey}',
+                'HTTP-Referer': 'https://arsii.local',
+                'X-Title': title,
+              },
+              body: jsonEncode(body),
+            )
+            .timeout(timeout);
+
+        if (response.statusCode == 429) {
+          final retryAfterHeader = response.headers['retry-after'];
+          final retrySeconds = int.tryParse(retryAfterHeader ?? '');
+          final delay = Duration(
+            seconds: retrySeconds != null && retrySeconds > 0
+                ? retrySeconds
+                : (attempt * 2),
+          );
+
+          if (attempt < maxAttempts) {
+            await Future.delayed(delay);
+            continue;
+          }
+        }
+
+        return response;
+      } on TimeoutException {
+        if (attempt < maxAttempts) {
+          await Future.delayed(Duration(seconds: attempt));
+          continue;
+        }
+        return null;
+      } catch (_) {
+        if (attempt < maxAttempts) {
+          await Future.delayed(Duration(seconds: attempt));
+          continue;
+        }
+        return null;
+      }
+    }
+
+    return null;
+  }
+
+  Future<String> explainLessonSimpler({
+    required String lessonTitle,
+    required String lessonContent,
+    required String studentLevel,
+  }) async {
+    final prompt = '''
+You are a friendly Informatics tutor.
+
+Student level: $studentLevel
+Lesson: $lessonTitle
+
+Lesson content:
+$lessonContent
+
+Rewrite the explanation in simpler words for this student level.
+Keep it concise, practical, and clear.
+Use 2 short paragraphs and 3 bullet points max.
+Do not use markdown fences.
+''';
+
+    return _requestPlainText(prompt: prompt, fallback: 'Could not generate a simpler explanation right now.');
+  }
+
+  Future<String> generateAnotherLessonExample({
+    required String lessonTitle,
+    required String lessonContent,
+    required String skill,
+    required String studentLevel,
+  }) async {
+    final prompt = '''
+You are an Informatics tutor creating one additional example.
+
+Student level: $studentLevel
+Lesson: $lessonTitle
+Skill/category: $skill
+
+Use this lesson context:
+$lessonContent
+
+Return:
+1) A short scenario title.
+2) One concrete example with step-by-step reasoning.
+3) A tiny "why this matters" sentence.
+
+Keep it under 220 words.
+Do not use markdown fences.
+''';
+
+    return _requestPlainText(prompt: prompt, fallback: 'Could not generate another example right now.');
+  }
+
+  Future<String> _requestPlainText({
+    required String prompt,
+    required String fallback,
+  }) async {
+    try {
+      final response = await _postOpenRouter(
+        title: 'Arsii Lessons AI',
+        body: {
+          'model': ApiConfig.model,
+          'messages': [
+            {'role': 'user', 'content': prompt},
+          ],
+          'temperature': 0.7,
+          'max_tokens': 700,
+        },
+      );
+
+      if (response == null || response.statusCode != 200) return fallback;
+
+      final data = jsonDecode(response.body) as Map<String, dynamic>;
+      final content = data['choices']?[0]?['message']?['content'] as String?;
+      final text = (content ?? '').trim();
+      return text.isEmpty ? fallback : text;
+    } catch (_) {
+      return fallback;
+    }
+  }
+
+  Future<List<AiGeneratedExercise>> generateAdaptiveExercises({
+    required String lessonTitle,
+    required String lessonContent,
+    required String topic,
+    required String studentLevel,
+    required List<String> weakSkills,
+    required List<String> previousMistakes,
+    int count = 5,
+  }) async {
+    final weak = weakSkills.isEmpty ? 'None' : weakSkills.join(', ');
+    final mistakes = previousMistakes.isEmpty ? 'None' : previousMistakes.join(', ');
+
+    final prompt = '''
+You are an adaptive learning system for an Informatics app.
+
+Generate exactly $count exercises for this lesson.
+Lesson: $lessonTitle
+Topic: $topic
+Student level: $studentLevel
+Weak skills: $weak
+Previous mistakes: $mistakes
+
+Lesson context:
+$lessonContent
+
+Rules:
+- Include a mix of exercise types: multiple_choice, true_false, short_answer
+- Return practical, lesson-specific questions (not generic trivia)
+- Keep each question concise and clear
+- For multiple_choice include exactly 4 options
+- For true_false use options ["True", "False"]
+- Provide correctAnswer and a short explanation for every item
+- Set difficulty from 1 to 5
+
+Return ONLY valid JSON array (no markdown):
+[
+  {
+    "type":"multiple_choice|true_false|short_answer",
+    "question":"...",
+    "options":["..."],
+    "correctAnswer":"...",
+    "explanation":"...",
+    "skill":"...",
+    "difficulty":2
+  }
+]
+''';
+
+    try {
+      final response = await _postOpenRouter(
+        title: 'Arsii Adaptive Exercises',
+        body: {
+          'model': ApiConfig.model,
+          'messages': [
+            {'role': 'user', 'content': prompt},
+          ],
+          'temperature': 0.55,
+          'max_tokens': 2200,
+        },
+      );
+
+      if (response == null || response.statusCode != 200) return const [];
+
+      final data = jsonDecode(response.body) as Map<String, dynamic>;
+      final content = data['choices']?[0]?['message']?['content'] as String?;
+      if (content == null || content.trim().isEmpty) return const [];
+
+      String cleaned = content.trim();
+      if (cleaned.startsWith('```')) {
+        cleaned = cleaned
+            .replaceAll(RegExp(r'^```\w*\n?'), '')
+            .replaceAll(RegExp(r'\n?```$'), '')
+            .trim();
+      }
+
+      final payload = _extractFirstJsonArray(cleaned);
+      final parsed = jsonDecode(payload) as List<dynamic>;
+
+      return parsed
+          .whereType<Map>()
+          .map((e) => AiGeneratedExercise.fromJson(Map<String, dynamic>.from(e)))
+          .where((e) => e.question.trim().isNotEmpty)
+          .toList();
+    } catch (_) {
+      return const [];
+    }
+  }
+
+  Future<AiShortAnswerEvaluation> evaluateShortAnswer({
+    required String question,
+    required String expectedAnswer,
+    required String studentAnswer,
+    required String lessonContext,
+    required String studentLevel,
+  }) async {
+    final prompt = '''
+You are an educational evaluator for Informatics learners.
+
+Student level: $studentLevel
+Question: $question
+Expected answer (reference): $expectedAnswer
+Student answer: $studentAnswer
+
+Lesson context:
+$lessonContext
+
+Evaluate the answer fairly and pedagogically.
+Return ONLY JSON with:
+{
+  "isCorrect": true/false,
+  "score": number between 0 and 1,
+  "explanation": "why it is right or wrong",
+  "personalizedFeedback": "encouraging next-step guidance"
+}
+''';
+
+    try {
+      final response = await _postOpenRouter(
+        title: 'Arsii Short Answer Evaluation',
+        body: {
+          'model': ApiConfig.model,
+          'messages': [
+            {'role': 'user', 'content': prompt},
+          ],
+          'temperature': 0.2,
+          'max_tokens': 600,
+        },
+      );
+
+      if (response == null || response.statusCode != 200) {
+        return const AiShortAnswerEvaluation(
+          isCorrect: false,
+          score: 0,
+          explanation: 'Could not evaluate right now.',
+          personalizedFeedback: 'Try refining your answer using the lesson concepts.',
+        );
+      }
+
+      final data = jsonDecode(response.body) as Map<String, dynamic>;
+      final content = data['choices']?[0]?['message']?['content'] as String?;
+      if (content == null || content.trim().isEmpty) {
+        return const AiShortAnswerEvaluation(
+          isCorrect: false,
+          score: 0,
+          explanation: 'Could not evaluate right now.',
+          personalizedFeedback: 'Try refining your answer using the lesson concepts.',
+        );
+      }
+
+      var cleaned = content.trim();
+      if (cleaned.startsWith('```')) {
+        cleaned = cleaned
+            .replaceAll(RegExp(r'^```\w*\n?'), '')
+            .replaceAll(RegExp(r'\n?```$'), '')
+            .trim();
+      }
+
+      final parsed = jsonDecode(cleaned) as Map<String, dynamic>;
+      return AiShortAnswerEvaluation.fromJson(parsed);
+    } catch (_) {
+      return const AiShortAnswerEvaluation(
+        isCorrect: false,
+        score: 0,
+        explanation: 'Could not evaluate right now.',
+        personalizedFeedback: 'Try refining your answer using the lesson concepts.',
+      );
+    }
+  }
+
+  Future<String> generateExerciseHint({
+    required String question,
+    required String lessonTitle,
+    required String lessonContext,
+    required String studentLevel,
+  }) async {
+    final prompt = '''
+You are a tutor giving a hint.
+
+Lesson: $lessonTitle
+Student level: $studentLevel
+Question: $question
+Lesson context: $lessonContext
+
+Give one concise hint that guides reasoning but does not reveal the full answer.
+Max 2 sentences.
+''';
+
+    return _requestPlainText(
+      prompt: prompt,
+      fallback: 'Think about the key concept used in this lesson and eliminate clearly wrong choices first.',
+    );
+  }
+
+  Future<String> generateTutorReply({
+    required String userMessage,
+    required String currentTopic,
+    required String currentLesson,
+    required String lessonSummary,
+    required String studentLevel,
+    required List<String> weakSkills,
+    required List<String> recentMistakes,
+    required String progressSummary,
+  }) async {
+    final prompt = '''
+You are an embedded AI tutor in an adaptive learning app.
+Style: supportive, concise, teacher-like, practical.
+
+Student context:
+- Level: $studentLevel
+- Current topic: $currentTopic
+- Current lesson: $currentLesson
+- Weak skills: ${weakSkills.isEmpty ? 'None' : weakSkills.join(', ')}
+- Recent mistakes: ${recentMistakes.isEmpty ? 'None' : recentMistakes.join(', ')}
+- Progress summary: $progressSummary
+
+Lesson summary:
+$lessonSummary
+
+Student message:
+$userMessage
+
+Rules:
+- Teach instead of generic chatting
+- If asked for hint, guide without directly revealing final answer
+- Keep response short (up to 160 words)
+- End with one suggested next step/question
+''';
+
+    return _requestPlainText(
+      prompt: prompt,
+      fallback: 'Let us break this into one small step. Tell me what part feels most confusing, and we will solve it together.',
+    );
+  }
+
   /// Generate quiz questions for the given subjects (5 per subject).
   Future<List<AiQuestion>> generateQuiz(List<String> subjectNames) async {
     if (subjectNames.isEmpty) return const [];
@@ -81,23 +509,22 @@ Return ONLY a valid JSON array, no markdown, no code fences:
 [{"subject":"...","question":"...","options":["A","B","C","D"],"correctIndex":0,"explanation":"..."}]
 ''';
 
-    final response = await http.post(
-      Uri.parse(ApiConfig.openRouterUrl),
-      headers: {
-        'Content-Type': 'application/json',
-        'Authorization': 'Bearer ${ApiConfig.openRouterApiKey}',
-        'HTTP-Referer': 'https://arsii.local',
-        'X-Title': 'Arsii Evaluation Quiz',
-      },
-      body: jsonEncode({
+    final response = await _postOpenRouter(
+      title: 'Arsii Evaluation Quiz',
+      body: {
         'model': ApiConfig.model,
         'messages': [
           {'role': 'user', 'content': prompt},
         ],
         'temperature': 0.7,
         'max_tokens': 4000,
-      }),
+      },
+      timeout: const Duration(seconds: 60),
     );
+
+    if (response == null) {
+      throw Exception('AI request timed out. The provider may still be processing. Please tap Retry.');
+    }
 
     if (response.statusCode != 200) {
       String message = 'OpenRouter request failed (${response.statusCode}).';
@@ -115,6 +542,10 @@ Return ONLY a valid JSON array, no markdown, no code fences:
         throw Exception(
           'OpenRouter authentication failed: $message. Your API key is invalid, revoked, or belongs to a missing account.',
         );
+      }
+
+      if (response.statusCode == 429) {
+        throw Exception('Rate limit reached. Please wait a minute and try again.');
       }
 
       throw Exception(message);
@@ -261,25 +692,19 @@ Return ONLY a valid JSON array, no markdown, no code fences:
 ''';
 
     try {
-      final response = await http.post(
-        Uri.parse(ApiConfig.openRouterUrl),
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': 'Bearer ${ApiConfig.openRouterApiKey}',
-          'HTTP-Referer': 'https://arsii.local',
-          'X-Title': 'Arsii Recommendations',
-        },
-        body: jsonEncode({
+      final response = await _postOpenRouter(
+        title: 'Arsii Recommendations',
+        body: {
           'model': ApiConfig.model,
           'messages': [
             {'role': 'user', 'content': prompt},
           ],
           'temperature': 0.8,
           'max_tokens': 1000,
-        }),
+        },
       );
 
-      if (response.statusCode != 200) return [];
+      if (response == null || response.statusCode != 200) return [];
 
       final data = jsonDecode(response.body);
       final content = data['choices']?[0]?['message']?['content'] as String?;
@@ -334,25 +759,19 @@ Return ONLY a valid JSON array, no markdown:
 ''';
 
     try {
-      final response = await http.post(
-        Uri.parse(ApiConfig.openRouterUrl),
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': 'Bearer ${ApiConfig.openRouterApiKey}',
-          'HTTP-Referer': 'https://arsii.local',
-          'X-Title': 'Arsii Weak Topics',
-        },
-        body: jsonEncode({
+      final response = await _postOpenRouter(
+        title: 'Arsii Weak Topics',
+        body: {
           'model': ApiConfig.model,
           'messages': [
             {'role': 'user', 'content': prompt},
           ],
           'temperature': 0.7,
           'max_tokens': 800,
-        }),
+        },
       );
 
-      if (response.statusCode != 200) return [];
+      if (response == null || response.statusCode != 200) return [];
 
       final data = jsonDecode(response.body);
       final content = data['choices']?[0]?['message']?['content'] as String?;

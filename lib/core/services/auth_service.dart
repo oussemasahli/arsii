@@ -43,6 +43,26 @@ class AuthService {
     await _auth.sendPasswordResetEmail(email: email);
   }
 
+  /// Send an email verification message to the signed-in user.
+  Future<void> sendEmailVerification() async {
+    final user = _auth.currentUser;
+    if (user == null) {
+      throw FirebaseAuthException(
+        code: 'no-current-user',
+        message: 'No signed in user was found.',
+      );
+    }
+    await user.sendEmailVerification();
+  }
+
+  /// Reload and return the latest signed-in user state.
+  Future<User?> reloadCurrentUser() async {
+    final user = _auth.currentUser;
+    if (user == null) return null;
+    await user.reload();
+    return _auth.currentUser;
+  }
+
   /// Sign out the current user.
   Future<void> signOut() async {
     await _auth.signOut();
