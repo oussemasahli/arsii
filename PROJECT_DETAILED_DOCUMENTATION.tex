@@ -1,0 +1,491 @@
+\documentclass[11pt,a4paper]{article}
+
+\usepackage[margin=1in]{geometry}
+\usepackage[T1]{fontenc}
+\usepackage[utf8]{inputenc}
+\usepackage{lmodern}
+\usepackage{setspace}
+\usepackage{hyperref}
+\usepackage{longtable}
+\usepackage{array}
+\usepackage{enumitem}
+\usepackage{titlesec}
+\usepackage{xcolor}
+
+\hypersetup{
+  colorlinks=true,
+  linkcolor=blue,
+  urlcolor=blue,
+  pdftitle={LOCK-IN / Arsii Project Technical Documentation},
+  pdfauthor={Project Team}
+}
+
+\setstretch{1.08}
+\setlist[itemize]{leftmargin=1.8em}
+\setlist[enumerate]{leftmargin=2.0em}
+\titleformat{\section}{\large\bfseries}{\thesection}{0.7em}{}
+\titleformat{\subsection}{\normalsize\bfseries}{\thesubsection}{0.6em}{}
+\titleformat{\subsubsection}{\normalsize\itshape}{\thesubsubsection}{0.5em}{}
+
+\title{\textbf{LOCK-IN (Arsii)\\Detailed Technical Project Documentation}}
+\author{Flutter + Firebase + AI Tutoring Platform}
+\date{April 19, 2026}
+
+\begin{document}
+\maketitle
+\tableofcontents
+\newpage
+
+\section{Executive Summary}
+LOCK-IN (package name: \texttt{arsii}) is a Flutter web-first educational platform focused on Informatics learning. It combines:
+\begin{itemize}
+  \item Firebase Authentication for account lifecycle,
+  \item Cloud Firestore for profile, lesson, attempt, and analytics persistence,
+  \item AI-powered workflows (OpenRouter API) for personalized onboarding, adaptive exercises, and tutor interactions,
+  \item A dark-theme, modern UI with responsive desktop/mobile layouts.
+\end{itemize}
+
+The core value proposition is adaptive learning: each student receives custom recommendations and support based on diagnostic assessment outcomes, weak-topic signals, and ongoing exercise performance.
+
+\section{Product Scope and Learning Model}
+\subsection{Learning Domains}
+The project is designed around five Informatics domains represented in onboarding/mock subject definitions and lesson topic IDs:
+\begin{enumerate}
+  \item Programming Basics
+  \item Algorithms
+  \item Data Structures
+  \item Databases
+  \item Web Basics
+\end{enumerate}
+
+\subsection{Pedagogical Strategy}
+The app follows a staged flow:
+\begin{enumerate}
+  \item Authentication and account entry.
+  \item Subject enrollment by the student.
+  \item AI-generated diagnostic evaluation quiz.
+  \item Profile initialization in Firestore (level + per-subject scores + onboarding completion).
+  \item Continuous adaptive delivery of lessons/exercises + progress analytics + tutor assistance.
+\end{enumerate}
+
+This creates a loop where data from student interactions continuously refines next recommendations.
+
+\section{Technology Stack}
+\subsection{Runtime and Language}
+\begin{itemize}
+  \item Flutter SDK (Dart $\geq$ 3.7.0 per \texttt{pubspec.yaml})
+  \item Material 3 UI system
+\end{itemize}
+
+\subsection{Primary Dependencies}
+\begin{itemize}
+  \item \texttt{firebase\_core}: Firebase initialization
+  \item \texttt{firebase\_auth}: user authentication, verification, password reset
+  \item \texttt{cloud\_firestore}: persistent app data and analytics storage
+  \item \texttt{http}: OpenRouter HTTP calls
+  \item \texttt{flutter\_dotenv}: secret loading from \texttt{assets/env/app.env}
+  \item \texttt{google\_fonts}: typographic system (Inter)
+\end{itemize}
+
+\subsection{Build and Platform}
+\begin{itemize}
+  \item Configured Firebase options currently expose a \textbf{web} target in \texttt{firebase\_options.dart}.
+  \item \texttt{web/index.html} defines a branded loading screen and metadata.
+  \item \texttt{firebase.json} contains FlutterFire project configuration metadata.
+\end{itemize}
+
+\section{Repository and Code Organization}
+\subsection{Top-Level Layout}
+\begin{itemize}
+  \item \texttt{lib/main.dart}: app bootstrap + auth gate routing.
+  \item \texttt{lib/core}: shared config, services, theming, mock data.
+  \item \texttt{lib/features}: domain modules (auth, onboarding, dashboard, lessons, exercises, progress, profile, welcome).
+  \item \texttt{lib/shared/widgets}: reusable UI components and visual primitives.
+  \item \texttt{assets/images}, \texttt{assets/env}: branding and environment files.
+\end{itemize}
+
+\subsection{Architectural Style}
+The app follows a pragmatic feature-first layered architecture:
+\begin{itemize}
+  \item \textbf{UI Layer}: Screens and widgets by feature.
+  \item \textbf{Service Layer}: Firebase and AI orchestration in \texttt{core/services} and feature services.
+  \item \textbf{Model Layer}: DTO/domain objects under feature model folders.
+  \item \textbf{Infrastructure Layer}: Firebase init, dotenv config, and network integrations.
+\end{itemize}
+
+There is no heavy state management framework; state is mostly managed with StatefulWidgets, local state variables, FutureBuilder/StreamBuilder, and service calls.
+
+\section{Application Bootstrap and Global Flow}
+\subsection{Startup Sequence (\texttt{main.dart})}
+At launch:
+\begin{enumerate}
+  \item Flutter bindings are initialized.
+  \item Dotenv attempts to load \texttt{assets/env/app.env}; failure is tolerated.
+  \item Firebase initializes using \texttt{DefaultFirebaseOptions.currentPlatform}.
+  \item \texttt{ArsiiApp} starts with \texttt{AppTheme.darkTheme}.
+\end{enumerate}
+
+\subsection{Auth Gate Routing Logic}
+\texttt{AuthGate} listens to Firebase auth changes and routes users:
+\begin{itemize}
+  \item No authenticated user: \texttt{WelcomeScreen}
+  \item Authenticated but onboarding not complete: \texttt{EnrollmentScreen}
+  \item Authenticated and onboarding complete: \texttt{DashboardScreen}
+\end{itemize}
+
+Onboarding completion is verified through \texttt{StudentService().isOnboardingComplete()} with timeout fallback.
+
+\section{Authentication and Account Services}
+\subsection{Auth Service Responsibilities}
+\texttt{core/services/auth\_service.dart} centralizes FirebaseAuth interactions:
+\begin{itemize}
+  \item \texttt{authStateChanges}
+  \item \texttt{currentUser}
+  \item \texttt{signUp(email, password)}
+  \item \texttt{signIn(email, password)}
+  \item \texttt{resetPassword(email)}
+  \item \texttt{sendEmailVerification()}
+  \item \texttt{reloadCurrentUser()}
+  \item \texttt{signOut()}
+\end{itemize}
+
+\subsection{UX Integration}
+Authentication actions are surfaced in:
+\begin{itemize}
+  \item \texttt{WelcomeScreen}: login and forgot-password handling
+  \item \texttt{signup\_screen.dart}: account creation flow
+  \item \texttt{DashboardScreen}: verification email send/refresh dialogs
+  \item \texttt{ProfileScreen}: sign-out capability
+\end{itemize}
+
+Error messaging maps Firebase auth codes to user-friendly text in dashboard/account-related flows.
+
+\section{Onboarding Pipeline}
+\subsection{Step 1: Enrollment}
+\texttt{EnrollmentScreen} lets students choose desired subjects from data modeled in \texttt{MockData.subjects}. The UI supports desktop/mobile layouts and captures selected subject IDs.
+
+\subsection{Step 2: AI Evaluation}
+\texttt{EvaluationScreen} orchestrates:
+\begin{enumerate}
+  \item quiz generation through \texttt{AiService.generateQuiz(subjectNames)},
+  \item per-question answer tracking and instant feedback animation,
+  \item final evaluation via \texttt{AiService.evaluateResults(...)},
+  \item persistence of onboarding results using \texttt{StudentService.saveOnboardingResults(...)}.
+\end{enumerate}
+
+\subsection{Evaluation Outcome}
+The resulting profile baseline includes:
+\begin{itemize}
+  \item inferred level (Beginner/Intermediate/Advanced),
+  \item subject performance map,
+  \item onboarding completion flag.
+\end{itemize}
+
+Navigation then resets stack and transitions to dashboard.
+
+\section{Core Domain Model and Profile Schema}
+\subsection{Student Profile Model}
+\texttt{StudentProfile} encapsulates user-learning state, including:
+\begin{itemize}
+  \item identity fields (uid, name, email),
+  \item level,
+  \item selected subjects and progress summaries,
+  \item weak topics,
+  \item recommendations,
+  \item current lesson context (subject/title/description/progress),
+  \item streak and activity metadata,
+  \item \texttt{onboardingComplete}.
+\end{itemize}
+
+Additional nested models include \texttt{StudentSubject}, \texttt{ActivityItem}, \texttt{WeakTopic}, and \texttt{Recommendation}. Objects support map serialization for Firestore writes.
+
+\subsection{Student Service Functional Scope}
+\texttt{StudentService} is the main abstraction over student document operations:
+\begin{itemize}
+  \item profile retrieval,
+  \item onboarding completion checks,
+  \item onboarding result persistence,
+  \item progress and subject updates,
+  \item current lesson updates.
+\end{itemize}
+
+This service is consumed by dashboard, lessons, exercises, tutor, and progress components.
+
+\section{AI Integration Design}
+\subsection{Configuration}
+\texttt{ApiConfig} reads \texttt{OPENROUTER\_API\_KEY} from dotenv and sets endpoint/model constants:
+\begin{itemize}
+  \item URL: \texttt{https://openrouter.ai/api/v1/chat/completions}
+  \item model: \texttt{nvidia/nemotron-3-super-120b-a12b:free}
+\end{itemize}
+
+\subsection{AiService Responsibilities}
+\texttt{AiService} supports multiple adaptive functions:
+\begin{itemize}
+  \item quiz generation for onboarding,
+  \item result evaluation and level assignment,
+  \item lesson simplification text generation,
+  \item additional example generation,
+  \item adaptive exercise generation,
+  \item short-answer evaluation,
+  \item hint generation,
+  \item tutor-reply generation.
+\end{itemize}
+
+\subsection{Reliability Behaviors}
+AI HTTP layer includes:
+\begin{itemize}
+  \item timeout handling,
+  \item retry loops,
+  \item HTTP 429 backoff logic using \texttt{retry-after} when available,
+  \item null/fallback behavior when key is unavailable or request fails.
+\end{itemize}
+
+This graceful-degradation pattern allows the app to remain usable even when AI calls fail.
+
+\section{Lessons Personalization Engine}
+\subsection{Service Source Strategy}
+\texttt{FirestoreLessonsService.getPersonalizedLessons()} composes lesson views from:
+\begin{enumerate}
+  \item student profile selected topic IDs,
+  \item Firestore topic lesson collections (ordered by \texttt{order}),
+  \item fallback seed data from \texttt{lesson\_seed\_data.dart},
+  \item per-user lesson progress records.
+\end{enumerate}
+
+\subsection{Personalized Buckets}
+It generates three principal sets:
+\begin{itemize}
+  \item \textbf{Recommended}: score-ranked for level fit and weak-skill relevance.
+  \item \textbf{Continue Learning}: in-progress lessons sorted by recent open time.
+  \item \textbf{Review Weak Areas}: unresolved lessons linked to weak topics.
+\end{itemize}
+
+\subsection{Lesson Open Tracking}
+\texttt{markLessonOpened(...)} updates:
+\begin{itemize}
+  \item student \texttt{lesson\_progress} document,
+  \item current lesson context on student profile via \texttt{StudentService.updateCurrentLesson(...)}.
+\end{itemize}
+
+\section{Exercises and Assessment Engine}
+\subsection{Exercise Acquisition}
+\texttt{ExerciseService.loadExercisesForLesson(...)} follows this chain:
+\begin{enumerate}
+  \item load Firestore exercises,
+  \item if insufficient, generate AI adaptive exercises using lesson context, weak skills, and mistakes,
+  \item if generation fails/empty, return fallback template exercises.
+\end{enumerate}
+
+\subsection{Answer Evaluation}
+\begin{itemize}
+  \item Multiple choice: deterministic comparison to expected answer.
+  \item Short answer: AI-based semantic evaluation returning correctness, score, explanation, and personalized feedback.
+\end{itemize}
+
+\subsection{Persistence}
+Each exercise interaction can store:
+\begin{itemize}
+  \item individual attempt in \texttt{exercise\_attempts},
+  \item session metadata in \texttt{exercise\_sessions},
+  \item final session result with weak-area extraction,
+  \item downstream updates to subject mastery and lesson progress status.
+\end{itemize}
+
+\section{Progress Analytics Pipeline}
+\subsection{Computation Source}
+\texttt{FirestoreProgressService.getSummary()} aggregates:
+\begin{itemize}
+  \item student profile baseline,
+  \item lesson progress collection,
+  \item latest exercise attempts (bounded query).
+\end{itemize}
+
+\subsection{Derived Metrics}
+Computed metrics include:
+\begin{itemize}
+  \item lesson completion ratio,
+  \item exercises attempted,
+  \item accuracy rate,
+  \item mastery by skill,
+  \item weak areas by mistake concentration,
+  \item trend string comparing recent vs older attempt windows,
+  \item recommendation text for next review action.
+\end{itemize}
+
+\subsection{Output and Storage}
+Summary is returned to UI and merged into \texttt{students/{uid}/progress\_summary/main}, supporting quick retrieval and historical updates.
+
+\section{AI Tutor Conversation Subsystem}
+\subsection{Message Flow}
+\texttt{AiTutorService.askTutor(...)}:
+\begin{enumerate}
+  \item loads profile context (level, weak topics, progress),
+  \item loads recent incorrect exercise attempts,
+  \item invokes AI tutor reply generation,
+  \item writes user and tutor messages into \texttt{tutor\_messages} subcollection in one transaction,
+  \item returns tutor message DTO for rendering.
+\end{enumerate}
+
+\subsection{Safety and Query Design}
+To reduce Firestore index complexity, some filtering is performed client-side after ordered queries (notably lesson/message filtering and incorrect-attempt extraction patterns).
+
+\section{Feature-by-Feature UI Documentation}
+\subsection{Welcome and Auth Entry}
+\begin{itemize}
+  \item Animated split-screen desktop and stacked mobile layout.
+  \item Branded top navigation with informational dialogs (features, curriculum, about).
+  \item Login form with email/password validation and mapped error states.
+\end{itemize}
+
+\subsection{Onboarding}
+\begin{itemize}
+  \item Enrollment step with selectable cards.
+  \item AI evaluation step with progress bar, per-question interaction, and result summary.
+\end{itemize}
+
+\subsection{Dashboard}
+\begin{itemize}
+  \item Serves as post-onboarding hub and tabbed shell (home, lessons, progress, exercises, settings).
+  \item Integrates profile loading, email verification actions, and navigation into sub-features.
+\end{itemize}
+
+\subsection{Lessons}
+\begin{itemize}
+  \item Categorized personalized lists.
+  \item Adaptive cards showing reasons and badges.
+  \item Lesson details page with content, concepts, examples, and AI action buttons.
+  \item Embedded/side AI tutor panel depending on viewport width.
+\end{itemize}
+
+\subsection{Exercises}
+\begin{itemize}
+  \item Session-based question workflow per lesson.
+  \item Multi-type answer input support.
+  \item Real-time feedback, hints, and final summary.
+\end{itemize}
+
+\subsection{Progress}
+\begin{itemize}
+  \item Hero analytics card and KPI cards.
+  \item Insight and mastery breakdown sections.
+  \item Empty/error states and refresh behaviors.
+\end{itemize}
+
+\subsection{Profile}
+\begin{itemize}
+  \item Identity card with account metadata.
+  \item Sign-out flow returning to welcome/login context.
+\end{itemize}
+
+\section{Theme, Design Tokens, and Shared Components}
+\subsection{Color System}
+\texttt{AppColors} defines a dark, neon-accent palette:
+\begin{itemize}
+  \item background surfaces (dark/card/elevated/subtle),
+  \item primary cyan spectrum,
+  \item secondary violet and tertiary pink accents,
+  \item semantic status colors,
+  \item reusable gradients and glow helpers.
+\end{itemize}
+
+\subsection{Typography and Material Theme}
+\texttt{AppTheme.darkTheme} applies Material 3 + Inter text theme with custom hierarchy, button styles, card borders, and dark ColorScheme integration.
+
+\subsection{Shared Widget Library}
+Reusable widgets in \texttt{lib/shared/widgets} provide consistent visuals and interactions, including:
+\begin{itemize}
+  \item abstract animated background,
+  \item glow/styled cards,
+  \item gradient button,
+  \item styled text field,
+  \item dashboard cards and hero components,
+  \item onboarding option and assessment card components.
+\end{itemize}
+
+\section{Data and Firestore Collection Model}
+\subsection{Main Collection Topology}
+A practical inferred schema from service code:
+\begin{itemize}
+  \item \texttt{students/{uid}}
+  \begin{itemize}
+    \item profile fields (level, subjects, weakTopics, recommendations, current lesson context, streak, onboardingComplete, ...)
+    \item \texttt{lesson\_progress/{lessonId}}
+    \item \texttt{exercise\_attempts/{attemptId}}
+    \item \texttt{exercise\_sessions/{sessionId}}
+    \item \texttt{progress\_summary/main}
+    \item \texttt{tutor\_messages/{messageId}}
+  \end{itemize}
+  \item \texttt{topics/{topicId}/lessons/{lessonId}}
+\end{itemize}
+
+\subsection{Normalization Strategy}
+The app mixes normalized and denormalized structures:
+\begin{itemize}
+  \item normalized lesson repository by topic,
+  \item denormalized user analytics snapshots (progress summary),
+  \item append-only attempts/messages for history and trend analysis.
+\end{itemize}
+
+\section{Environment and Secrets Handling}
+\subsection{Dotenv Use}
+AI key retrieval uses \texttt{flutter\_dotenv} from \texttt{assets/env/app.env}. If missing/invalid, AI functions gracefully degrade.
+
+\subsection{Security Consideration}
+Because the current app is web-oriented and calls external AI APIs, production hardening should eventually move sensitive key usage behind a secure backend proxy to avoid exposing provider secrets in client-delivered contexts.
+
+\section{Error Handling and Resilience Patterns}
+Project-wide patterns include:
+\begin{itemize}
+  \item guarding operations with mounted checks in async UI code,
+  \item explicit loading/error/empty states per screen,
+  \item timeouts on network-critical onboarding operations,
+  \item tolerant fallbacks for AI and content sourcing,
+  \item retry actions in UI for recoverable failures.
+\end{itemize}
+
+\section{Responsive and UX Considerations}
+\begin{itemize}
+  \item Repeated desktop breakpoints around wider layouts ($\sim$960 px and above).
+  \item Side-panel tutor for very wide screens and floating compact panel on smaller layouts.
+  \item Visual hierarchy supports high contrast in dark mode with accent-guided focus.
+\end{itemize}
+
+\section{Current Operational Constraints and Risks}
+\subsection{Platform Scope}
+\texttt{firebase\_options.dart} currently throws unsupported error for non-web platforms. If mobile/desktop deployment is required, additional platform configs must be generated and integrated.
+
+\subsection{Client-Side AI Calls}
+Direct API calls from client-side runtime can introduce key-management and abuse risks. Recommended future direction: server-side token mediation or Cloud Functions gateway.
+
+\subsection{Firestore Index and Query Strategy}
+Some client-side filtering choices reduce immediate index requirements but may increase over-fetching. This trade-off is acceptable for early-stage scale but should be revisited with production load.
+
+\section{Build, Run, and Maintenance Notes}
+\subsection{Typical Local Setup}
+\begin{enumerate}
+  \item Ensure Flutter and Dart SDK compatibility with \texttt{pubspec.yaml}.
+  \item Provide \texttt{assets/env/app.env} with \texttt{OPENROUTER\_API\_KEY}.
+  \item Configure Firebase project credentials (already scaffolded for web).
+  \item Run dependency install and launch Flutter web target.
+\end{enumerate}
+
+\subsection{Testing Status}
+The repository includes Flutter test dependency scaffolding, but this documentation reflects architectural review of implementation code and does not claim full automated test coverage of all flows.
+
+\section{Suggested Future Enhancements}
+\begin{enumerate}
+  \item Introduce structured state management (e.g., Riverpod/Bloc) for larger scalability.
+  \item Add repository interfaces and test doubles for easier unit/integration testing.
+  \item Move AI provider calls to backend services for secure key handling.
+  \item Add analytics event instrumentation for pedagogical outcome tracking.
+  \item Expand offline/cache strategies for lesson/exercise continuity.
+  \item Strengthen CI with lint, static analysis, widget tests, and end-to-end smoke tests.
+\end{enumerate}
+
+\section{Conclusion}
+LOCK-IN (Arsii) is a substantial adaptive-learning Flutter application with clear feature modularization, rich UI implementation, and meaningful AI + Firebase integration. The current architecture is practical for iterative development and already contains key foundations of an intelligent tutoring platform: personalized diagnostics, adaptive content generation, learner-progress analytics, and context-aware tutor support.
+
+With security hardening, expanded test coverage, and backend mediation for AI traffic, the project is well-positioned for production-level maturation.
+
+\end{document}
