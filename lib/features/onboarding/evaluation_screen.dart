@@ -4,6 +4,7 @@ import 'package:google_fonts/google_fonts.dart';
 import '../../core/theme/app_colors.dart';
 import '../../core/data/mock_data.dart';
 import '../../core/services/ai_service.dart';
+import '../../core/services/student_service.dart';
 import '../../shared/widgets/abstract_background.dart';
 import '../../shared/widgets/gradient_button.dart';
 import '../dashboard/dashboard_screen.dart';
@@ -19,6 +20,7 @@ class EvaluationScreen extends StatefulWidget {
 class _EvaluationScreenState extends State<EvaluationScreen>
     with TickerProviderStateMixin {
   final _ai = AiService();
+  final _studentService = StudentService();
 
   // State
   List<AiQuestion> _questions = [];
@@ -106,7 +108,27 @@ class _EvaluationScreenState extends State<EvaluationScreen>
     setState(() => _result = result);
   }
 
-  void _goToDashboard() {
+  bool _saving = false;
+
+  void _goToDashboard() async {
+    if (_saving) return;
+    setState(() => _saving = true);
+
+    try {
+      // Save evaluation results to Firestore with a timeout
+      final subjectNames = widget.selectedSubjects.map((s) => s.name).toList();
+      final subjectIds = widget.selectedSubjects.map((s) => s.id).toList();
+      await _studentService.saveOnboardingResults(
+        level: _result!.level,
+        subjectScores: _result!.subjectScores,
+        subjectNames: subjectNames,
+        subjectIds: subjectIds,
+      ).timeout(const Duration(seconds: 8));
+    } catch (_) {
+      // Even if Firestore save fails or times out, still navigate
+    }
+
+    if (!mounted) return;
     Navigator.of(context).pushAndRemoveUntil(
       MaterialPageRoute(builder: (_) => const DashboardScreen()),
       (_) => false,

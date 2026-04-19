@@ -230,4 +230,152 @@ Return ONLY a valid JSON array, no markdown, no code fences:
     );
   }
 
+  /// Generate AI-powered personalized recommendations based on evaluation results.
+  Future<List<Map<String, String>>> generateRecommendations({
+    required String level,
+    required Map<String, double> subjectScores,
+  }) async {
+    final scoresDesc = subjectScores.entries
+        .map((e) => '${e.key}: ${(e.value * 100).toInt()}%')
+        .join(', ');
+
+    final prompt = '''
+You are a personalized Informatics tutor AI. Based on a student's diagnostic quiz results, generate 3-4 specific, actionable learning recommendations.
+
+Student level: $level
+Subject scores: $scoresDesc
+
+For each recommendation provide:
+- title: short actionable title (max 6 words)
+- description: 1 sentence explaining why and what to do (max 20 words)
+- icon: one of: refresh, storage, school, fitness_center, emoji_events, trending_up, auto_awesome
+
+Rules:
+- Be specific to their weak subjects (low scores)
+- Mention actual topics from Informatics (e.g. "Practice recursion with trees", not generic advice)
+- If a subject score is high (>70%), suggest advancing, not reviewing
+- Tailor advice to their level ($level)
+
+Return ONLY a valid JSON array, no markdown, no code fences:
+[{"title":"...","description":"...","icon":"..."}]
+''';
+
+    try {
+      final response = await http.post(
+        Uri.parse(ApiConfig.openRouterUrl),
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': 'Bearer ${ApiConfig.openRouterApiKey}',
+          'HTTP-Referer': 'https://arsii.local',
+          'X-Title': 'Arsii Recommendations',
+        },
+        body: jsonEncode({
+          'model': ApiConfig.model,
+          'messages': [
+            {'role': 'user', 'content': prompt},
+          ],
+          'temperature': 0.8,
+          'max_tokens': 1000,
+        }),
+      );
+
+      if (response.statusCode != 200) return [];
+
+      final data = jsonDecode(response.body);
+      final content = data['choices']?[0]?['message']?['content'] as String?;
+      if (content == null || content.trim().isEmpty) return [];
+
+      String cleaned = content.trim();
+      if (cleaned.startsWith('```')) {
+        cleaned = cleaned
+            .replaceAll(RegExp(r'^```\w*\n?'), '')
+            .replaceAll(RegExp(r'\n?```$'), '')
+            .trim();
+      }
+
+      final jsonPayload = _extractFirstJsonArray(cleaned);
+      final List<dynamic> parsed = jsonDecode(jsonPayload);
+
+      return parsed.map((r) => <String, String>{
+        'title': (r['title'] ?? '').toString(),
+        'description': (r['description'] ?? '').toString(),
+        'icon': (r['icon'] ?? 'auto_awesome').toString(),
+      }).where((r) => r['title']!.isNotEmpty).toList();
+    } catch (_) {
+      return [];
+    }
+  }
+
+  /// Generate AI-powered weak topic analysis.
+  Future<List<Map<String, dynamic>>> generateWeakTopics({
+    required String level,
+    required Map<String, double> subjectScores,
+  }) async {
+    final weakSubjects = subjectScores.entries
+        .where((e) => e.value < 0.6)
+        .map((e) => '${e.key}: ${(e.value * 100).toInt()}%')
+        .join(', ');
+
+    if (weakSubjects.isEmpty) return [];
+
+    final prompt = '''
+You are an Informatics education analyst. Identify specific weak topics for a student based on their diagnostic quiz results.
+
+Student level: $level
+Weak subjects (below 60%): $weakSubjects
+
+For each weak subject, identify 1-2 specific sub-topics that a student at this level would typically struggle with. Provide:
+- topic: specific topic name (e.g. "Recursion", "Binary Trees", "CSS Flexbox")
+- subject: the parent subject name (must match exactly from the list above)
+- score: estimated mastery percentage (10-49, lower for weaker areas)
+
+Return ONLY a valid JSON array, no markdown:
+[{"topic":"...","subject":"...","score":30}]
+''';
+
+    try {
+      final response = await http.post(
+        Uri.parse(ApiConfig.openRouterUrl),
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': 'Bearer ${ApiConfig.openRouterApiKey}',
+          'HTTP-Referer': 'https://arsii.local',
+          'X-Title': 'Arsii Weak Topics',
+        },
+        body: jsonEncode({
+          'model': ApiConfig.model,
+          'messages': [
+            {'role': 'user', 'content': prompt},
+          ],
+          'temperature': 0.7,
+          'max_tokens': 800,
+        }),
+      );
+
+      if (response.statusCode != 200) return [];
+
+      final data = jsonDecode(response.body);
+      final content = data['choices']?[0]?['message']?['content'] as String?;
+      if (content == null || content.trim().isEmpty) return [];
+
+      String cleaned = content.trim();
+      if (cleaned.startsWith('```')) {
+        cleaned = cleaned
+            .replaceAll(RegExp(r'^```\w*\n?'), '')
+            .replaceAll(RegExp(r'\n?```$'), '')
+            .trim();
+      }
+
+      final jsonPayload = _extractFirstJsonArray(cleaned);
+      final List<dynamic> parsed = jsonDecode(jsonPayload);
+
+      return parsed.map((w) => <String, dynamic>{
+        'topic': (w['topic'] ?? '').toString(),
+        'subject': (w['subject'] ?? '').toString(),
+        'score': (w['score'] ?? 30) as int,
+      }).where((w) => (w['topic'] as String).isNotEmpty).toList();
+    } catch (_) {
+      return [];
+    }
+  }
 }

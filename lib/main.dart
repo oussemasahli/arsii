@@ -3,6 +3,7 @@ import 'package:firebase_core/firebase_core.dart';
 import 'firebase_options.dart';
 import 'core/theme/app_theme.dart';
 import 'core/services/auth_service.dart';
+import 'core/services/student_service.dart';
 import 'features/welcome/welcome_screen.dart';
 import 'features/onboarding/enrollment_screen.dart';
 import 'features/dashboard/dashboard_screen.dart';
@@ -33,8 +34,8 @@ class ArsiiApp extends StatelessWidget {
 ///
 /// Flow:
 ///   - Not signed in → WelcomeScreen (login)
-///   - Signed in + new user (no onboarding) → EnrollmentScreen
-///   - Signed in + returning user → DashboardScreen
+///   - Signed in + no Firestore profile (or onboardingComplete == false) → EnrollmentScreen
+///   - Signed in + onboardingComplete == true → DashboardScreen
 class AuthGate extends StatelessWidget {
   const AuthGate({super.key});
 
@@ -62,28 +63,31 @@ class AuthGate extends StatelessWidget {
           return const WelcomeScreen();
         }
 
-        // Signed in → Check onboarding status
-        // TODO: Replace with real Firestore check later.
-        // For now, use a placeholder: treat all users as new on first sign-in.
-        // Change `isNewUser` to `false` to test the returning-user flow.
-        final user = snapshot.data!;
-        final isNewUser = _checkIsNewUser(user);
+        // Signed in → Check Firestore for onboarding status
+        return FutureBuilder<bool>(
+          future: StudentService().isOnboardingComplete()
+              .timeout(const Duration(seconds: 10), onTimeout: () => false),
+          builder: (context, onboardingSnap) {
+            if (onboardingSnap.connectionState == ConnectionState.waiting) {
+              return const Scaffold(
+                body: Center(
+                  child: CircularProgressIndicator(
+                    color: Color(0xFF00D4FF),
+                    strokeWidth: 2.5,
+                  ),
+                ),
+              );
+            }
 
-        if (isNewUser) {
-          return const EnrollmentScreen();
-        }
+            final isComplete = onboardingSnap.data ?? false;
+            if (!isComplete) {
+              return const EnrollmentScreen();
+            }
 
-        return const DashboardScreen();
+            return const DashboardScreen();
+          },
+        );
       },
     );
-  }
-
-  /// Placeholder: treat users created in the last 60 seconds as "new".
-  /// Replace with a real Firestore `users/{uid}/onboardingComplete` check later.
-  bool _checkIsNewUser(dynamic user) {
-    final metadata = user.metadata;
-    if (metadata.creationTime == null) return false;
-    final diff = DateTime.now().difference(metadata.creationTime!);
-    return diff.inSeconds < 60;
   }
 }
